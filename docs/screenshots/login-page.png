@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect fill="#f5f5f5" width="800" height="600"/>
+
+  <!-- 浏览器框架 -->
+  <rect fill="#e8e8e8" width="800" height="40"/>
+  <circle fill="#ff5f57" cx="15" cy="20" r="6"/>
+  <circle fill="#ffbd2e" cx="35" cy="20" r="6"/>
+  <circle fill="#28c940" cx="55" cy="20" r="6"/>
+  <rect fill="#fff" x="80" y="8" width="640" height="24" rx="4"/>
+  <text x="400" y="24" fill="#999" font-family="Arial" font-size="12" text-anchor="middle">http://localhost:5173</text>
+
+  <!-- 登录表单 -->
+  <rect fill="white" x="250" y="150" width="300" height="300" rx="8"/>
+
+  <!-- Logo -->
+  <rect fill="#1890ff" x="350" y="170" width="100" height="100" rx="16"/>
+  <text x="400" y="235" fill="white" font-family="Arial" font-size="40" text-anchor="middle" font-weight="bold">K</text>
+
+  <!-- 标题 -->
+  <text x="400" y="300" fill="#333" font-family="Arial" font-size="20" text-anchor="middle" font-weight="bold">欢迎登录</text>
+  <text x="400" y="325" fill="#999" font-family="Arial" font-size="12" text-anchor="middle">金蝶数据传输平台</text>
+
+  <!-- 输入框 -->
+  <rect fill="#f5f5f5" x="280" y="350" width="240" height="40" rx="4"/>
+  <text x="295" y="375" fill="#999" font-family="Arial" font-size="14">用户名</text>
+
+  <rect fill="#f5f5f5" x="280" y="400" width="240" height="40" rx="4"/>
+  <text x="295" y="425" fill="#999" font-family="Arial" font-size="14">密码</text>
+
+  <!-- 登录按钮 -->
+  <rect fill="#1890ff" x="280" y="455" width="240" height="40" rx="4"/>
+  <text x="400" y="482" fill="white" font-family="Arial" font-size="14" text-anchor="middle">登 录</text>
+
+  <!-- 底部链接 -->
+  <text x="400" y="530" fill="#1890ff" font-family="Arial" font-size="12" text-anchor="middle">没有账号？立即注册</text>
+</svg>

@@ -42,8 +42,12 @@ temp_*
 server/data/*.json
 server/data/*_instances/
 
-# Screenshot directory (optional, for documentation)
-docs/screenshots/
+# Screenshot directory (for documentation)
+# Note: PNG/JPG files are allowed in docs/screenshots/ for README documentation
+!docs/screenshots/*.png
+!docs/screenshots/*.jpg
+!docs/screenshots/*.jpeg
+# But ignore other PNGs in the project
 *.png
 *.jpg
 *.jpeg

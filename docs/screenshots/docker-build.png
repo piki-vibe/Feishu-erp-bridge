@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect fill="#f5f5f5" width="800" height="600"/>
+
+  <!-- 终端标题 -->
+  <rect fill="#333" width="800" height="32"/>
+  <text x="15" y="24" fill="#fff" font-family="Arial" font-size="14">终端 - Docker Compose</text>
+
+  <!-- 内容区 -->
+  <rect fill="#1e1e1e" x="10" y="40" width="780" height="550"/>
+
+  <!-- 命令和输出 -->
+  <text x="20" y="80" fill="#00ff00" font-family="Consolas" font-size="14">$ docker-compose up -d --build</text>
+
+  <text x="20" y="120" fill="#cccccc" font-family="Consolas" font-size="13">[+] Running 3/3</text>
+
+  <text x="40" y="150" fill="#00ff00" font-family="Consolas" font-size="13">✔ kingdee-sync Built</text>
+  <text x="40" y="175" fill="#00ff00" font-family="Consolas" font-size="13">✔ kingdee-sync 3 layers ⬆️</text>
+  <text x="40" y="200" fill="#00ff00" font-family="Consolas" font-size="13">✔ kingdee-sync Created</text>
+
+  <text x="20" y="250" fill="#cccccc" font-family="Consolas" font-size="13">[+] Running 2/2</text>
+
+  <text x="40" y="280" fill="#00ff00" font-family="Consolas" font-size="13">✔ Network kingdee-network Created</text>
+  <text x="40" y="305" fill="#00ff00" font-family="Consolas" font-size="13">✔ Container kingdee-sync-platform Started</text>
+
+  <text x="20" y="360" fill="#00ff00" font-family="Consolas" font-size="14">$ docker-compose ps</text>
+
+  <text x="20" y="400" fill="#cccccc" font-family="Consolas" font-size="12">
+NAME                    STATUS         PORTS
+</text>
+  <text x="20" y="425" fill="#00ff00" font-family="Consolas" font-size="12">
+kingdee-sync-platform   Up (healthy)   0.0.0.0:3001-&gt;3001/tcp, 0.0.0.0:5173-&gt;5173/tcp
+</text>
+
+  <text x="20" y="480" fill="#00ff00" font-family="Consolas" font-size="14">$ docker-compose logs -f</text>
+
+  <text x="20" y="520" fill="#666" font-family="Consolas" font-size="12">
+kingdee-sync-platform | 服务器运行在 http://localhost:3001
+</text>
+  <text x="20" y="545" fill="#666" font-family="Consolas" font-size="12">
+kingdee-sync-platform | VITE ready in 234ms
+</text>
+  <text x="20" y="570" fill="#666" font-family="Consolas" font-size="12">
+kingdee-sync-platform | Local: http://localhost:5173/
+</text>
+</svg>

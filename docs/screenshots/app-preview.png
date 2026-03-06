@@ -1,0 +1,58 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="675" viewBox="0 0 1200 675">
+  <rect fill="#f5f5f5" width="1200" height="675"/>
+
+  <!-- 顶部导航栏 -->
+  <rect fill="#1890ff" width="1200" height="60"/>
+  <text x="30" y="40" fill="white" font-family="Arial" font-size="24" font-weight="bold">金蝶数据传输平台</text>
+  <text x="1050" y="40" fill="white" font-family="Arial" font-size="16">管理员</text>
+
+  <!-- 侧边栏 -->
+  <rect fill="#001529" width="200" height="675"/>
+  <rect fill="#1890ff" x="0" y="80" width="200" height="50"/>
+  <text x="30" y="112" fill="white" font-family="Arial" font-size="16">任务管理</text>
+  <text x="30" y="180" fill="#a6adb4" font-family="Arial" font-size="16">执行记录</text>
+  <text x="30" y="230" fill="#a6adb4" font-family="Arial" font-size="16">系统设置</text>
+
+  <!-- 主内容区 -->
+  <rect fill="white" x="200" y="60" width="1000" height="615"/>
+  <text x="230" y="110" fill="#333" font-family="Arial" font-size="20" font-weight="bold">任务列表</text>
+
+  <!-- 新建任务按钮 -->
+  <rect fill="#1890ff" x="1000" y="90" width="150" height="40" rx="4"/>
+  <text x="1075" y="117" fill="white" font-family="Arial" font-size="14" text-anchor="middle">+ 新建任务</text>
+
+  <!-- 任务卡片 1 -->
+  <rect fill="#f0f5ff" x="230" y="140" width="940" height="100" rx="8"/>
+  <rect fill="#52c41a" x="250" y="155" width="80" height="30" rx="4"/>
+  <text x="290" y="175" fill="white" font-family="Arial" font-size="12" text-anchor="middle">已启用</text>
+  <text x="360" y="175" fill="#333" font-family="Arial" font-size="16" font-weight="bold">付款单同步</text>
+  <text x="360" y="200" fill="#666" font-family="Arial" font-size="12">飞书 → 金蝶 | 每日 8:00 执行</text>
+  <text x="1050" y="195" fill="#1890ff" font-family="Arial" font-size="14" text-anchor="middle">执行</text>
+
+  <!-- 任务卡片 2 -->
+  <rect fill="#f0f5ff" x="230" y="260" width="940" height="100" rx="8"/>
+  <rect fill="#d9d9d9" x="250" y="275" width="80" height="30" rx="4"/>
+  <text x="290" y="295" fill="#666" font-family="Arial" font-size="12" text-anchor="middle">已禁用</text>
+  <text x="360" y="295" fill="#333" font-family="Arial" font-size="16" font-weight="bold">销售订单同步</text>
+  <text x="360" y="320" fill="#666" font-family="Arial" font-size="12">飞书 → 金蝶 | 手动执行</text>
+  <text x="1050" y="315" fill="#1890ff" font-family="Arial" font-size="14" text-anchor="middle">执行</text>
+
+  <!-- 状态统计 -->
+  <rect fill="white" x="230" y="390" width="280" height="120" rx="8"/>
+  <rect fill="#e6f7ff" x="230" y="390" width="280" height="40" rx="8"/>
+  <text x="370" y="415" fill="#1890ff" font-family="Arial" font-size="32" font-weight="bold" text-anchor="middle">128</text>
+  <text x="370" y="440" fill="#666" font-family="Arial" font-size="14" text-anchor="middle">总任务数</text>
+
+  <rect fill="white" x="530" y="390" width="280" height="120" rx="8"/>
+  <rect fill="#f6ffed" x="530" y="390" width="280" height="40" rx="8"/>
+  <text x="670" y="415" fill="#52c41a" font-family="Arial" font-size="32" font-weight="bold" text-anchor="middle">125</text>
+  <text x="670" y="440" fill="#666" font-family="Arial" font-size="14" text-anchor="middle">成功</text>
+
+  <rect fill="white" x="830" y="390" width="280" height="120" rx="8"/>
+  <rect fill="#fff2e8" x="830" y="390" width="280" height="40" rx="8"/>
+  <text x="970" y="415" fill="#fa8c16" font-family="Arial" font-size="32" font-weight="bold" text-anchor="middle">3</text>
+  <text x="970" y="440" fill="#666" font-family="Arial" font-size="14" text-anchor="middle">失败</text>
+
+  <!-- 底部 -->
+  <text x="600" y="650" fill="#999" font-family="Arial" font-size="12" text-anchor="middle">金蝶数据传输平台 v1.0.0</text>
+</svg>
