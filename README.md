@@ -26,18 +26,6 @@
 | 多账户 | 多账户数据独立存储，安全隔离 |
 | 公网访问 | Cloudflare Tunnel 公网暴露，支持移动端访问 |
 
-### 应用界面
-
-#### PC 端界面
-
-![应用界面截图](docs/screenshots/app-preview.png)
-> 主界面展示任务列表和执行状态
-
-#### 移动端界面
-
-![移动端界面](docs/screenshots/app-mobile.png)
-> 手机端适配，随时随地查看任务状态
-
 ### 适用场景
 
 - 财务单据同步：付款单、收款单、费用报销单等
@@ -97,8 +85,6 @@
 
 1. 双击运行 `deploy.bat`
 
-![Windows 部署截图](docs/screenshots/deploy-windows.png)
-
 2. 等待依赖安装完成
 
 3. 启动服务：
@@ -137,15 +123,11 @@ git clone https://github.com/keyupan91-cpu/Feishu-erp-bridge.git
 cd Feishu-erp-bridge
 ```
 
-![Git 克隆截图](docs/screenshots/git-clone.png)
-
 **步骤 2：构建并启动容器**
 
 ```bash
 docker-compose up -d --build
 ```
-
-![Docker 构建截图](docs/screenshots/docker-build.png)
 
 **步骤 3：查看运行状态**
 
@@ -157,13 +139,9 @@ docker-compose ps
 docker-compose logs -f
 ```
 
-![Docker 日志截图](docs/screenshots/docker-logs.png)
-
 **步骤 4：访问应用**
 
 打开浏览器访问：`http://localhost:5173`
-
-![应用访问截图](docs/screenshots/app-access.png)
 
 **步骤 5：停止服务**
 
@@ -199,8 +177,6 @@ Docker Compose 已配置数据卷，以下数据会持久化保存到本地：
 node -v  # 应显示版本号，如 v20.11.0
 npm -v   # 应显示版本号，如 10.2.4
 ```
-
-![环境验证截图](docs/screenshots/env-check.png)
 
 #### 步骤 2：克隆项目
 
@@ -264,17 +240,12 @@ npm run start:all
 3. 输入用户名（至少 6 位）和密码
 4. 完成注册
 
-![登录页面](docs/screenshots/login-page.png)
-> 用户登录/注册页面
-
 ### 2. 配置飞书参数
 
 #### 2.1 创建飞书应用
 
 1. 登录 [飞书开放平台](https://open.feishu.cn/)
 2. 点击「企业自建应用」→「创建应用」
-
-![创建飞书应用截图](docs/screenshots/feishu-create-app.png)
 
 #### 2.2 获取凭证
 
@@ -284,9 +255,6 @@ npm run start:all
 #### 2.3 配置飞书应用
 
 在应用配置页面输入飞书参数：
-
-![飞书配置页面](docs/screenshots/feishu-config.png)
-> 飞书应用配置页面
 
 #### 2.3 配置权限
 
@@ -306,8 +274,6 @@ https://xxx.feishu.cn/base/bascnXXXXXXXXXXXXX?table=tblXXXXXXXXXXXXX
                                     └─ App Token          └─ Table ID
 ```
 
-![多维表信息截图](docs/screenshots/feishu-table-info.png)
-
 ### 3. 配置金蝶参数
 
 #### 3.1 准备金蝶云星空信息
@@ -323,8 +289,6 @@ https://xxx.feishu.cn/base/bascnXXXXXXXXXXXXX?table=tblXXXXXXXXXXXXX
 
 在应用配置页面输入金蝶参数后，点击「测试连接」按钮确认配置正确。
 
-![金蝶配置截图](docs/screenshots/kingdee-config.png)
-
 ### 4. 创建同步任务
 
 1. 点击「新建任务」按钮
@@ -332,8 +296,6 @@ https://xxx.feishu.cn/base/bascnXXXXXXXXXXXXX?table=tblXXXXXXXXXXXXX
 3. 配置飞书字段映射
 4. 配置金蝶数据模板
 5. 保存并执行
-
-![创建任务截图](docs/screenshots/create-task.png)
 
 #### 数据模板配置示例
 
@@ -468,8 +430,6 @@ npm run start:all
 +--------------------------------------------------------------------+
 ```
 
-![Cloudflare Tunnel 截图](docs/screenshots/cloudflare-tunnel.png)
-
 #### 注意事项
 
 1. **临时 Tunnel**：使用 `--url` 方式创建的 Tunnel 是临时的，关闭后 URL 失效
@@ -598,12 +558,6 @@ MIT License - 详见 [LICENSE](LICENSE) 文件
 - [飞书开放平台](https://open.feishu.cn/)
 - [金蝶云星空开发文档](https://developer.kingdee.com/)
 - [Cloudflare 官方文档](https://developers.cloudflare.com/cloudflare-one/)
-
----
-
-## Star History
-
-[![Star History Chart](https://api.star-history.com/svg?repos=keyupan91-cpu/Feishu-erp-bridge&type=Date)](https://star-history.com/#keyupan91-cpu/Feishu-erp-bridge&Date)
 
 ---
 
