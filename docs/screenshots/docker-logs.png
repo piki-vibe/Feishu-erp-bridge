@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect fill="#1e1e1e" width="800" height="600"/>
+  <text x="400" y="100" fill="#00ff00" font-family="Consolas" font-size="18" text-anchor="middle">Docker Compose 日志输出</text>
+  <text x="50" y="150" fill="#cccccc" font-family="Consolas" font-size="14">$ docker-compose logs -f</text>
+  <text x="50" y="200" fill="#52c41a" font-family="Consolas" font-size="14">kingdee-sync-platform  | 服务器运行在 http://localhost:3001</text>
+  <text x="50" y="230" fill="#52c41a" font-family="Consolas" font-size="14">kingdee-sync-platform  | VITE ready in 234ms</text>
+  <text x="50" y="260" fill="#52c41a" font-family="Consolas" font-size="14">kingdee-sync-platform  | Local: http://localhost:5173/</text>
+  <text x="50" y="290" fill="#52c41a" font-family="Consolas" font-size="14">kingdee-sync-platform  | Network: http://192.168.1.100:5173/</text>
+  <text x="50" y="340" fill="#1890ff" font-family="Consolas" font-size="14">[后端] JWT 认证已启用</text>
+  <text x="50" y="370" fill="#1890ff" font-family="Consolas" font-size="14">[后端] 数据库路径：/app/server/data</text>
+  <text x="50" y="400" fill="#1890ff" font-family="Consolas" font-size="14">[后端] 代理服务已启动 - /api -> http://localhost:3001</text>
+  <text x="50" y="450" fill="#faad14" font-family="Consolas" font-size="14">[Cloudflare] 正在连接...</text>
+  <text x="50" y="480" fill="#52c41a" font-family="Consolas" font-size="14">[Cloudflare] 已获取公网 URL: https://xxx.trycloudflare.com</text>
+  <text x="400" y="550" fill="#666" font-family="Consolas" font-size="12" text-anchor="middle">Docker 日志实时输出</text>
+</svg>

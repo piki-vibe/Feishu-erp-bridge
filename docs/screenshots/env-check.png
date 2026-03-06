@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <rect fill="#0c0c0c" width="800" height="600"/>
+  <text x="50" y="80" fill="#00ff00" font-family="Consolas" font-size="16">$ node -v</text>
+  <text x="50" y="120" fill="#ffffff" font-family="Consolas" font-size="16">v20.11.0</text>
+  <text x="50" y="180" fill="#00ff00" font-family="Consolas" font-size="16">$ npm -v</text>
+  <text x="50" y="220" fill="#ffffff" font-family="Consolas" font-size="16">10.2.4</text>
+  <text x="50" y="280" fill="#00ff00" font-family="Consolas" font-size="16">$ git --version</text>
+  <text x="50" y="320" fill="#ffffff" font-family="Consolas" font-size="16">git version 2.43.0.windows.1</text>
+  <rect fill="#1890ff" x="200" y="400" width="400" height="80" rx="8"/>
+  <text x="400" y="435" fill="white" font-family="Arial" font-size="18" text-anchor="middle" font-weight="bold">✓ 环境检查通过</text>
+  <text x="400" y="465" fill="#e6f7ff" font-family="Arial" font-size="14" text-anchor="middle">Node.js >= 18.0 已安装</text>
+  <text x="50" y="550" fill="#666" font-family="Consolas" font-size="14">环境验证完成</text>
+</svg>
