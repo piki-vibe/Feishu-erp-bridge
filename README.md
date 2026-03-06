@@ -2,6 +2,10 @@
 
 **版本**: v1.0.0 | **更新日期**: 2026-03-06
 
+[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![Node](https://img.shields.io/badge/node-%3E%3D18.0-brightgreen.svg)](https://nodejs.org/)
+[![Docker](https://img.shields.io/badge/docker-compose-%3E%3D2.0-blue.svg)](https://docs.docker.com/compose/)
+
 ---
 
 ## 产品简介
@@ -19,6 +23,18 @@
 | 日志追溯 | 详细的任务日志和 WebAPI 调用日志 |
 | 多账户 | 多账户数据独立存储，安全隔离 |
 | 公网访问 | Cloudflare Tunnel 公网暴露，支持移动端访问 |
+
+### 应用界面
+
+#### PC 端界面
+
+![应用界面截图](docs/screenshots/app-preview.png)
+> 主界面展示任务列表和执行状态
+
+#### 移动端界面
+
+![移动端界面](docs/screenshots/app-mobile.png)
+> 手机端适配，随时随地查看任务状态
 
 ### 适用场景
 
@@ -63,34 +79,166 @@
 
 ## 快速开始
 
-### 一键部署（推荐）
+### 部署方式对比
+
+| 方式 | 适用场景 | 难度 |
+|------|---------|------|
+| 一键部署脚本 | 本地开发/测试 | ⭐ |
+| Docker 部署 | 生产环境 | ⭐⭐ |
+| 手动部署 | 自定义配置 | ⭐⭐⭐ |
+
+---
+
+### 方式一：一键部署脚本（推荐新手）
 
 **Windows 用户**：
+
+1. 双击运行 `deploy.bat`
+
+![Windows 部署截图](docs/screenshots/deploy-windows.png)
+
+2. 等待依赖安装完成
+
+3. 启动服务：
 ```bash
-# 双击运行或在命令行执行
-.\deploy.bat
+npm run start:all
 ```
 
 **macOS / Linux 用户**：
+
 ```bash
-# 赋予执行权限并运行
+# 1. 赋予执行权限
 chmod +x deploy.sh
+
+# 2. 运行部署脚本
 ./deploy.sh
-```
-
-### 手动部署
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/keyupan91-cpu/Feishu-erp-bridge.git
-cd Feishu-erp-bridge
-
-# 2. 安装依赖
-npm install
 
 # 3. 启动服务
 npm run start:all
 ```
+
+---
+
+### 方式二：Docker 部署（生产环境推荐）
+
+#### 前置要求
+
+- Docker Desktop 已安装并运行
+- Docker Compose v2.0+
+
+#### 部署步骤
+
+**步骤 1：克隆仓库**
+
+```bash
+git clone https://github.com/keyupan91-cpu/Feishu-erp-bridge.git
+cd Feishu-erp-bridge
+```
+
+![Git 克隆截图](docs/screenshots/git-clone.png)
+
+**步骤 2：构建并启动容器**
+
+```bash
+docker-compose up -d --build
+```
+
+![Docker 构建截图](docs/screenshots/docker-build.png)
+
+**步骤 3：查看运行状态**
+
+```bash
+# 查看容器状态
+docker-compose ps
+
+# 查看实时日志
+docker-compose logs -f
+```
+
+![Docker 日志截图](docs/screenshots/docker-logs.png)
+
+**步骤 4：访问应用**
+
+打开浏览器访问：`http://localhost:5173`
+
+![应用访问截图](docs/screenshots/app-access.png)
+
+**步骤 5：停止服务**
+
+```bash
+docker-compose down
+```
+
+#### 数据持久化
+
+Docker Compose 已配置数据卷，以下数据会持久化保存到本地：
+
+| 数据卷 | 容器内路径 | 说明 |
+|--------|-----------|------|
+| `./server/data` | `/app/server/data` | 账户和任务配置数据 |
+| `./logs` | `/app/logs` | 运行日志文件 |
+
+---
+
+### 方式三：手动部署
+
+#### 步骤 1：环境准备
+
+确保已安装以下软件：
+
+| 软件 | 版本要求 | 下载地址 |
+|------|---------|---------|
+| Node.js | v18.0+ | https://nodejs.org/ |
+| Git | 任意版本 | https://git-scm.com/ |
+
+验证环境：
+
+```bash
+node -v  # 应显示版本号，如 v20.11.0
+npm -v   # 应显示版本号，如 10.2.4
+```
+
+![环境验证截图](docs/screenshots/env-check.png)
+
+#### 步骤 2：克隆项目
+
+```bash
+git clone https://github.com/keyupan91-cpu/Feishu-erp-bridge.git
+cd Feishu-erp-bridge
+```
+
+#### 步骤 3：安装依赖
+
+```bash
+npm install
+```
+
+#### 步骤 4：启动服务
+
+```bash
+# 开发模式（推荐）
+npm run dev
+
+# 生产模式（包含 Cloudflare Tunnel）
+npm run start:all
+```
+
+#### 步骤 5：访问应用
+
+启动成功后，在终端查看访问地址：
+
+```
+╔══════════════════════════════════════════════════════════╗
+║          金蝶数据传输平台 - 服务启动成功                  ║
+╠══════════════════════════════════════════════════════════╣
+║  本地访问：                                               ║
+║    前端：http://localhost:5173                           ║
+║    后端：http://localhost:3001                           ║
+║  公网访问：https://xxx.trycloudflare.com                 ║
+╚══════════════════════════════════════════════════════════╝
+```
+
+---
 
 ### 系统要求
 
@@ -98,92 +246,106 @@ npm run start:all
 |------|------|
 | 操作系统 | Windows 10/11、macOS、Linux |
 | Node.js | v18.0 或更高版本 |
+| 内存 | 至少 512MB 可用内存 |
+| 磁盘 | 至少 100MB 可用空间 |
 | 浏览器 | Chrome 90+、Edge 90+、Firefox 88+ |
 | 网络 | 需能访问飞书 API 和金蝶云星空服务器 |
 
-### 安装与启动
-
-```bash
-# 1. 安装依赖
-npm install
-
-# 2. 启动所有服务（推荐）
-npm run start:all
-
-# 或分别启动
-npm run dev          # 前端 + 后端（开发模式）
-npm run server       # 只启动后端
-npm run dev:client   # 只启动前端
-```
-
-### 启动命令
-
-| 命令 | 功能 |
-|------|------|
-| `npm run dev` | 同时启动前端和后端（开发模式） |
-| `npm run dev:client` | 只启动前端 |
-| `npm run dev:server` | 只启动后端 |
-| `npm run server` | 只启动后端（生产模式） |
-| `npm run start:tunnel` | 只启动 Cloudflare Tunnel |
-| `npm run start:all` | 一键启动所有服务 |
-
-### 访问地址
-
-启动成功后，在终端查看：
-- **本地访问**: `http://localhost:5173`
-- **公网访问**: `https://xxx.trycloudflare.com`
-
-> **注意**: 公网链接仅在 cloudflared 运行期间有效
-
-### Docker 部署（推荐用于生产环境）
-
-```bash
-# 1. 构建并启动
-docker-compose up -d
-
-# 2. 查看日志
-docker-compose logs -f
-
-# 3. 停止服务
-docker-compose down
-```
-
-**docker-compose 配置说明**：
-- 端口 3001: 后端 API
-- 端口 5173: 前端服务
-- 数据卷：持久化存储服务器数据
-- 可选：包含 Cloudflare Tunnel 服务
-
 ---
 
-## 使用流程
+## 配置指南
 
 ### 1. 注册账户
 
-1. 访问应用页面
+1. 访问应用页面 `http://localhost:5173`
 2. 切换到「注册」标签
 3. 输入用户名（至少 6 位）和密码
 4. 完成注册
 
+![登录页面](docs/screenshots/login-page.png)
+> 用户登录/注册页面
+
 ### 2. 配置飞书参数
 
+#### 2.1 创建飞书应用
+
 1. 登录 [飞书开放平台](https://open.feishu.cn/)
-2. 创建企业自建应用
-3. 获取 App ID 和 App Secret
-4. 从多维表地址栏获取 App Token 和 Table ID
+2. 点击「企业自建应用」→「创建应用」
+
+![创建飞书应用截图](docs/screenshots/feishu-create-app.png)
+
+#### 2.2 获取凭证
+
+1. 进入应用详情页
+2. 获取 App ID 和 App Secret
+
+#### 2.3 配置飞书应用
+
+在应用配置页面输入飞书参数：
+
+![飞书配置页面](docs/screenshots/feishu-config.png)
+> 飞书应用配置页面
+
+#### 2.3 配置权限
+
+在「权限管理」页面添加以下权限：
+
+| 权限 | 说明 |
+|------|------|
+| 多维表读取 | 读取表格数据 |
+| 多维表写入 | 回写同步状态 |
+
+#### 2.4 获取多维表信息
+
+从多维表 URL 中获取：
+
+```
+https://xxx.feishu.cn/base/bascnXXXXXXXXXXXXX?table=tblXXXXXXXXXXXXX
+                                    └─ App Token          └─ Table ID
+```
+
+![多维表信息截图](docs/screenshots/feishu-table-info.png)
 
 ### 3. 配置金蝶参数
 
-1. 准备金蝶云星空服务器地址
-2. 输入用户名、密码、账套 ID
-3. 测试连接确认配置正确
+#### 3.1 准备金蝶云星空信息
+
+| 参数 | 说明 | 示例 |
+|------|------|------|
+| 服务器地址 | 金蝶云星空 API 地址 | `http://xxx.xxx.com:8000` |
+| 用户名 | 登录用户名 | `admin` |
+| 密码 | 登录密码 | `******` |
+| 账套 ID | 组织机构编号 | `100001` |
+
+#### 3.2 测试连接
+
+在应用配置页面输入金蝶参数后，点击「测试连接」按钮确认配置正确。
+
+![金蝶配置截图](docs/screenshots/kingdee-config.png)
 
 ### 4. 创建同步任务
 
-1. 点击「新建任务」
-2. 配置飞书字段映射
-3. 配置金蝶数据模板
-4. 保存并执行
+1. 点击「新建任务」按钮
+2. 填写任务名称和描述
+3. 配置飞书字段映射
+4. 配置金蝶数据模板
+5. 保存并执行
+
+![创建任务截图](docs/screenshots/create-task.png)
+
+#### 数据模板配置示例
+
+使用 `{{变量名}}` 格式引用飞书字段：
+
+```json
+{
+  "Model": {
+    "FDATE": "{{date}}",
+    "FREMARK": "{{remark}}",
+    "FPAYORGID": { "FNumber": "{{companyCode}}" }
+  }
+}
+```
 
 ---
 
@@ -246,6 +408,71 @@ docker-compose down
 | 同步状态 | 成功消息 | 显示「同步成功」或「同步失败」 |
 | 错误信息 | 错误消息 | 显示具体错误原因 |
 | 响应 JSON | 完整响应 | 记录完整 API 响应 |
+
+---
+
+## 公网访问配置
+
+### Cloudflare Tunnel 配置
+
+Cloudflare Tunnel 可以将本地服务安全地暴露到公网，无需公网 IP 和端口映射。
+
+#### 步骤 1：下载 cloudflared
+
+**Windows 用户**：
+
+```powershell
+# 使用 PowerShell 下载
+Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared-windows-amd64.exe"
+```
+
+**macOS 用户**：
+
+```bash
+brew install cloudflared
+```
+
+**Linux 用户**：
+
+```bash
+# AMD64
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
+chmod +x cloudflared
+
+# ARM64
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64 -O cloudflared
+chmod +x cloudflared
+```
+
+#### 步骤 2：启动 Tunnel
+
+```bash
+# 方式一：使用项目脚本启动（推荐）
+npm run start:all
+
+# 方式二：直接启动 cloudflared
+./cloudflared-windows-amd64.exe tunnel --url http://localhost:5173
+```
+
+#### 步骤 3：获取公网 URL
+
+启动成功后，在终端会显示公网 URL：
+
+```
++--------------------------------------------------------------------+
+|  Your quick Tunnel has been created! Visit it at (it may take some  |
+|  time to be reachable):                                            |
+|  https://example-quick-tunnel.trycloudflare.com                    |
++--------------------------------------------------------------------+
+```
+
+![Cloudflare Tunnel 截图](docs/screenshots/cloudflare-tunnel.png)
+
+#### 注意事项
+
+1. **临时 Tunnel**：使用 `--url` 方式创建的 Tunnel 是临时的，关闭后 URL 失效
+2. **持久 Tunnel**：需要注册 Cloudflare 账号并配置 DNS，参考 [Cloudflare 官方文档](https://developers.cloudflare.com/cloudflare-one/connections/connect-non-http/)
+3. **安全建议**：生产环境建议使用持久 Tunnel 并配置访问控制
 
 ---
 
@@ -359,7 +586,22 @@ server/data/
 
 ## 许可证
 
-MIT License
+MIT License - 详见 [LICENSE](LICENSE) 文件
+
+---
+
+## 相关链接
+
+- [GitHub 仓库](https://github.com/keyupan91-cpu/Feishu-erp-bridge)
+- [飞书开放平台](https://open.feishu.cn/)
+- [金蝶云星空开发文档](https://developer.kingdee.com/)
+- [Cloudflare 官方文档](https://developers.cloudflare.com/cloudflare-one/)
+
+---
+
+## Star History
+
+[![Star History Chart](https://api.star-history.com/svg?repos=keyupan91-cpu/Feishu-erp-bridge&type=Date)](https://star-history.com/#keyupan91-cpu/Feishu-erp-bridge&Date)
 
 ---
 

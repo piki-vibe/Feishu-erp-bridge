@@ -42,7 +42,8 @@ temp_*
 server/data/*.json
 server/data/*_instances/
 
-# Docker
-.dockerignore
-Dockerfile
-docker-compose.yml
+# Screenshot directory (optional, for documentation)
+docs/screenshots/
+*.png
+*.jpg
+*.jpeg

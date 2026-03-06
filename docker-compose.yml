@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  kingdee-sync:
+    build: .
+    container_name: kingdee-sync-platform
+    ports:
+      - "3001:3001"  # 后端 API
+      - "5173:5173"  # 前端
+    volumes:
+      - ./server/data:/app/server/data  # 持久化数据
+      - ./logs:/app/logs                # 日志文件
+    environment:
+      - NODE_ENV=production
+      - FRONTEND_PORT=5173
+      - BACKEND_PORT=3001
+    restart: unless-stopped
