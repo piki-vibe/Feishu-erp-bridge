@@ -540,14 +540,14 @@ function App() {
     });
   };
 
-  // 加载日志 - 从 IndexedDB 加载
+  // 加载日志 - 从 IndexedDB 加载（全部存储，但只加载前 10 条用于显示）
   const loadLogs = async (instanceId: string) => {
     setLogsLoading(true);
     try {
       const { logStorage } = await import('./services/logStorage');
       const [taskLogs, webApiLogs] = await Promise.all([
-        logStorage.getTaskLogs(instanceId, { limit: 100, reverse: true }),
-        logStorage.getWebApiLogs(instanceId, { limit: 10, reverse: true }), // 只加载前 10 条
+        logStorage.getTaskLogs(instanceId, { limit: 10, reverse: true }), // PC 端只显示前 10 条
+        logStorage.getWebApiLogs(instanceId, { limit: 10, reverse: true }), // PC 端只显示前 10 条
       ]);
       setLoadedTaskLogs(taskLogs);
       setLoadedWebApiLogs(webApiLogs);
@@ -1391,7 +1391,7 @@ function App() {
             ) : (
               <div>
                 {/* 执行日志 */}
-                <Card size="small" title="📝 执行日志" style={{ marginBottom: 16 }}>
+                <Card size="small" title="📝 执行日志（最近 10 条）" style={{ marginBottom: 16 }}>
                   {logsLoading ? (
                     <Spin size="small" />
                   ) : loadedTaskLogs.length === 0 ? (
@@ -2097,7 +2097,7 @@ return (
           ) : (
             <List
               size="small"
-              dataSource={selectedInstance.webApiLogs || []}
+              dataSource={loadedWebApiLogs}
               renderItem={(log: WebAPILog) => (
                 <List.Item
                   style={{
