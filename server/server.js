@@ -6,6 +6,7 @@ import fs from 'fs/promises';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
+import { TaskExecutor, TaskStatus, getRunningTasks, addRunningTask, removeRunningTask, getRunningTask } from './taskExecutor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -110,6 +111,16 @@ function getAccountInstancesDir(username) {
   return path.join(DATA_DIR, `${username}_instances`);
 }
 
+// 获取账户日志目录
+function getAccountLogsDir(username) {
+  return path.join(DATA_DIR, `${username}_logs`);
+}
+
+// 获取日志文件路径
+function getLogFilePath(username, instanceId) {
+  return path.join(getAccountLogsDir(username), `${instanceId}.json`);
+}
+
 // 获取执行记录文件路径
 function getInstanceFilePath(username, filename) {
   return path.join(getAccountInstancesDir(username), filename);
@@ -148,10 +159,68 @@ function authMiddleware(req, res, next) {
   }
 }
 
+// 保存 WebAPI 日志 - 只保存第一条记录的日志
+async function saveWebApiLog(username, instanceId, logData) {
+  const logsDir = getAccountLogsDir(username);
+
+  try {
+    await fs.access(logsDir);
+  } catch {
+    await fs.mkdir(logsDir, { recursive: true });
+  }
+
+  const logFilePath = getLogFilePath(username, instanceId);
+
+  // 检查是否已存在日志文件，如果存在则不再保存（只保存第一条）
+  try {
+    await fs.access(logFilePath);
+    console.log(`日志文件已存在，跳过保存: ${instanceId}`);
+    return false;
+  } catch {
+    // 文件不存在，可以保存
+  }
+
+  const logEntry = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    instanceId,
+    timestamp: new Date().toISOString(),
+    ...logData,
+  };
+
+  await fs.writeFile(logFilePath, JSON.stringify(logEntry, null, 2));
+  console.log(`WebAPI 日志已保存: ${instanceId}`);
+  return true;
+}
+
+// 获取日志
+async function getWebApiLog(username, instanceId) {
+  const logFilePath = getLogFilePath(username, instanceId);
+
+  try {
+    const data = await fs.readFile(logFilePath, 'utf8');
+    return JSON.parse(data);
+  } catch {
+    return null;
+  }
+}
+
+// 删除日志
+async function deleteWebApiLog(username, instanceId) {
+  const logFilePath = getLogFilePath(username, instanceId);
+
+  try {
+    await fs.unlink(logFilePath);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 // 初始化账户数据结构
 async function initAccountData(username) {
   const accountPath = getAccountFilePath(username);
   const instancesDir = getAccountInstancesDir(username);
+  const logsDir = getAccountLogsDir(username);
 
   try {
     await fs.access(accountPath);
@@ -168,6 +237,12 @@ async function initAccountData(username) {
     await fs.access(instancesDir);
   } catch {
     await fs.mkdir(instancesDir, { recursive: true });
+  }
+
+  try {
+    await fs.access(logsDir);
+  } catch {
+    await fs.mkdir(logsDir, { recursive: true });
   }
 }
 
@@ -257,6 +332,8 @@ async function deleteInstanceFile(username, instanceId) {
         const instance = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
         if (instance.id === instanceId) {
           await fs.unlink(path.join(instancesDir, file));
+          // 同时删除关联的日志文件
+          await deleteWebApiLog(username, instanceId);
           return true;
         }
       } catch {
@@ -678,26 +755,94 @@ app.all('/open-apis/*', async (req, res) => {
   }
 });
 
-// 代理金蝶 API 请求 - 优化：连接复用
+// 代理金蝶 API 请求 - 优化：连接复用，正确处理 Cookie
 const kingdeeAgent = new (require('http')).Agent({
   keepAlive: true,
   maxSockets: 50,
 });
 
+// 金蝶 Session Cookie 存储（按用户存储）
+const kingdeeSessions = new Map();
+
 app.all('/K3Cloud/*', async (req, res) => {
   try {
-    const targetUrl = `${req.body.baseUrl || 'http://47.113.148.159:8090'}${req.path}`;
+    let baseUrl = req.body.baseUrl || 'http://47.113.148.159:8090';
+    // 从 baseUrl 中去除可能存在的 /K3Cloud 后缀，避免重复
+    if (baseUrl.endsWith('/K3Cloud')) {
+      baseUrl = baseUrl.replace(/\/K3Cloud$/, '');
+    }
+    // req.path 包含 /K3Cloud/...，需要去掉前面的 /K3Cloud 避免重复
+    const pathWithoutPrefix = req.path.replace(/^\/K3Cloud/, '');
+    const targetUrl = `${baseUrl}/K3Cloud${pathWithoutPrefix}`;
+
+    // 准备请求头
+    const headers = {
+      'Content-Type': 'application/json',
+    };
+
+    // 如果有存储的 Cookie 或者请求中传来的 Cookie，添加到请求头
+    const sessionKey = req.body.sessionKey || req.headers['x-session-key'];
+    if (sessionKey && kingdeeSessions.has(sessionKey)) {
+      headers['Cookie'] = kingdeeSessions.get(sessionKey);
+      console.log('使用存储的 Cookie:', sessionKey, kingdeeSessions.get(sessionKey).substring(0, 50));
+    }
+    // 如果请求体中有 Cookie（从 taskExecutor 传来），直接使用
+    if (req.headers['cookie']) {
+      headers['Cookie'] = req.headers['cookie'];
+      console.log('使用请求传来的 Cookie:', req.headers['cookie'].substring(0, 50));
+    }
+
+    // 转发 Host 头
+    const urlObj = new URL(targetUrl);
+    headers['Host'] = urlObj.host;
+
+    console.log('金蝶代理请求:', {
+      targetUrl,
+      method: req.method,
+      hasSessionKey: !!sessionKey,
+      bodyPreview: JSON.stringify(req.body).substring(0, 200)
+    });
 
     const response = await fetch(targetUrl, {
       method: req.method,
-      headers: {
-        'Content-Type': 'application/json',
-        ...req.headers,
-      },
+      headers,
       body: req.method !== 'GET' && req.method !== 'HEAD' ? JSON.stringify(req.body) : undefined,
     });
 
-    const data = await response.json();
+    // 提取响应中的 Cookie
+    const setCookieHeaders = response.headers.get('set-cookie');
+    if (setCookieHeaders) {
+      // 保存 Cookie 到 session
+      if (sessionKey) {
+        kingdeeSessions.set(sessionKey, setCookieHeaders);
+        console.log('保存 Cookie 到 session:', sessionKey);
+      }
+      // 转发 Set-Cookie header
+      res.setHeader('Set-Cookie', setCookieHeaders);
+    }
+
+    // 先获取文本，再尝试解析 JSON
+    const responseText = await response.text();
+    console.log('金蝶响应原始内容:', responseText.substring(0, 500));
+
+    let data;
+    try {
+      data = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('JSON 解析失败，响应内容:', responseText);
+      return res.status(response.status).json({
+        error: '金蝶服务器返回非 JSON 响应',
+        rawResponse: responseText.substring(0, 500),
+        status: response.status
+      });
+    }
+
+    console.log('金蝶代理响应:', {
+      status: response.status,
+      LoginResultType: data?.LoginResultType,
+      hasException: !!data?.Exception
+    });
+
     res.status(response.status).json(data);
   } catch (error) {
     console.error('金蝶代理请求失败:', error);
@@ -1035,5 +1180,256 @@ app.post('/api/account/change-password', authMiddleware, async (req, res) => {
   } catch (error) {
     console.error('修改密码失败:', error);
     res.status(500).json({ error: '修改密码失败' });
+  }
+});
+
+// ==================== 日志 API ====================
+
+// 保存 WebAPI 日志
+app.post('/api/logs/webapi', authMiddleware, async (req, res) => {
+  try {
+    const { username } = req.user;
+    const { instanceId, recordId, feishuData, requestData, responseData, writeBackData, success, errorMessage } = req.body;
+
+    if (!instanceId) {
+      return res.status(400).json({ error: '缺少 instanceId' });
+    }
+
+    const saved = await saveWebApiLog(username, instanceId, {
+      recordId,
+      feishuData,
+      requestData,
+      responseData,
+      writeBackData,
+      success,
+      errorMessage,
+    });
+
+    res.json({
+      success: true,
+      saved,
+      message: saved ? '日志已保存' : '日志已存在，跳过保存'
+    });
+  } catch (error) {
+    console.error('保存日志失败:', error);
+    res.status(500).json({ error: '保存日志失败：' + error.message });
+  }
+});
+
+// 获取指定实例的日志
+app.get('/api/logs/:instanceId', authMiddleware, async (req, res) => {
+  try {
+    const { username } = req.user;
+    const { instanceId } = req.params;
+
+    const log = await getWebApiLog(username, instanceId);
+
+    if (!log) {
+      return res.status(404).json({ error: '日志不存在' });
+    }
+
+    res.json({ success: true, log });
+  } catch (error) {
+    console.error('获取日志失败:', error);
+    res.status(500).json({ error: '获取日志失败' });
+  }
+});
+
+// 删除指定实例的日志
+app.delete('/api/logs/:instanceId', authMiddleware, async (req, res) => {
+  try {
+    const { username } = req.user;
+    const { instanceId } = req.params;
+
+    const deleted = await deleteWebApiLog(username, instanceId);
+
+    if (deleted) {
+      res.json({ success: true, message: '日志已删除' });
+    } else {
+      res.status(404).json({ error: '日志不存在' });
+    }
+  } catch (error) {
+    console.error('删除日志失败:', error);
+    res.status(500).json({ error: '删除日志失败' });
+  }
+});
+
+// ==================== 任务执行 API ====================
+
+// 保存实例回调函数
+async function saveInstanceCallback(instance) {
+  const { username } = instance;
+  const instancesDir = getAccountInstancesDir(username);
+
+  try {
+    await fs.access(instancesDir);
+  } catch {
+    await fs.mkdir(instancesDir, { recursive: true });
+  }
+
+  // 查找现有文件
+  const files = await fs.readdir(instancesDir);
+  for (const file of files) {
+    if (file.endsWith('.json')) {
+      try {
+        const existing = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+        if (existing.id === instance.id) {
+          await fs.writeFile(path.join(instancesDir, file), JSON.stringify(instance, null, 2));
+          return;
+        }
+      } catch {
+        // 忽略
+      }
+    }
+  }
+
+  // 新实例，创建新文件
+  const taskName = instance.taskName || '未命名任务';
+  const filename = generateInstanceFileName(taskName, instance.startTime || new Date());
+  await fs.writeFile(path.join(instancesDir, filename), JSON.stringify(instance, null, 2));
+}
+
+// 保存日志回调函数
+async function saveLogCallback(username, instanceId, logData) {
+  await saveWebApiLog(username, instanceId, logData);
+}
+
+// 启动任务执行
+app.post('/api/tasks/:taskId/execute', authMiddleware, async (req, res) => {
+  try {
+    const { username } = req.user;
+    const { taskId } = req.params;
+
+    // 获取任务配置
+    const accountData = await readAccountData(username);
+    const task = accountData.tasks.find(t => t.id === taskId);
+
+    if (!task) {
+      return res.status(404).json({ error: '任务不存在' });
+    }
+
+    // 创建任务实例
+    const instanceId = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+    const instance = {
+      id: instanceId,
+      taskId: task.id,
+      taskName: task.name,
+      username: username,
+      status: TaskStatus.IDLE,
+      startTime: null,
+      endTime: null,
+      progress: 0,
+      totalCount: 0,
+      successCount: 0,
+      errorCount: 0,
+    };
+
+    // 保存初始实例
+    await saveInstanceFile(username, instance);
+
+    // 创建执行器并启动
+    const executor = new TaskExecutor(
+      task,
+      instance,
+      username,
+      (instanceId, logData) => saveLogCallback(username, instanceId, logData),
+      saveInstanceCallback
+    );
+
+    addRunningTask(instanceId, executor);
+
+    // 异步执行任务（不阻塞响应）
+    executor.execute().catch(err => {
+      console.error(`任务执行失败: ${err.message}`);
+    }).finally(() => {
+      removeRunningTask(instanceId);
+    });
+
+    res.json({
+      success: true,
+      instanceId,
+      message: '任务已启动',
+    });
+  } catch (error) {
+    console.error('启动任务失败:', error);
+    res.status(500).json({ error: '启动任务失败：' + error.message });
+  }
+});
+
+// 停止任务执行
+app.post('/api/tasks/:instanceId/stop', authMiddleware, async (req, res) => {
+  try {
+    const { instanceId } = req.params;
+
+    const executor = getRunningTask(instanceId);
+    if (!executor) {
+      return res.status(404).json({ error: '任务实例不存在或已完成' });
+    }
+
+    executor.stop();
+    res.json({ success: true, message: '任务已请求停止' });
+  } catch (error) {
+    console.error('停止任务失败:', error);
+    res.status(500).json({ error: '停止任务失败' });
+  }
+});
+
+// 获取任务状态
+app.get('/api/tasks/:instanceId/status', authMiddleware, async (req, res) => {
+  try {
+    const { username } = req.user;
+    const { instanceId } = req.params;
+
+    // 先检查正在运行的任务
+    const executor = getRunningTask(instanceId);
+    if (executor) {
+      const instance = executor.instance;
+      return res.json({
+        success: true,
+        status: instance.status,
+        progress: instance.progress,
+        totalCount: instance.totalCount,
+        successCount: instance.successCount,
+        errorCount: instance.errorCount,
+        isRunning: true,
+      });
+    }
+
+    // 检查已完成的任务实例
+    const instancesDir = getAccountInstancesDir(username);
+    try {
+      await fs.access(instancesDir);
+    } catch {
+      return res.status(404).json({ error: '任务实例不存在' });
+    }
+
+    const files = await fs.readdir(instancesDir);
+    for (const file of files) {
+      if (file.endsWith('.json')) {
+        try {
+          const instance = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+          if (instance.id === instanceId) {
+            return res.json({
+              success: true,
+              status: instance.status,
+              progress: instance.progress,
+              totalCount: instance.totalCount || 0,
+              successCount: instance.successCount || 0,
+              errorCount: instance.errorCount || 0,
+              isRunning: false,
+              startTime: instance.startTime,
+              endTime: instance.endTime,
+            });
+          }
+        } catch {
+          // 忽略
+        }
+      }
+    }
+
+    res.status(404).json({ error: '任务实例不存在' });
+  } catch (error) {
+    console.error('获取任务状态失败:', error);
+    res.status(500).json({ error: '获取任务状态失败' });
   }
 });

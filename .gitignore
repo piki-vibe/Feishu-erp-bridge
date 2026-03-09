@@ -41,6 +41,7 @@ temp_*
 # Server data (user data, should not be committed)
 server/data/*.json
 server/data/*_instances/
+server/data/admin_logs/
 
 # Screenshot directory (for documentation)
 # Note: PNG/JPG files are allowed in docs/screenshots/ for README documentation

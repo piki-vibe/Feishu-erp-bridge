@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Tabs,
   Button,
@@ -60,7 +60,7 @@ import AuthPage from './components/AuthPage';
 import { useAccountStore } from './stores/accountStore';
 import FeishuService from './services/feishuService';
 import KingdeeService from './services/kingdeeService';
-import { executeTask, stopTaskExecution } from './services/taskExecutor';
+import { taskExecutionApi } from './services/apiService';
 // 移动端优化导入
 import { useResponsive } from './hooks/useResponsive';
 import { BottomNavBar, TopNavBar, MobileTaskCard, MobileTaskInstanceCard } from './components';
@@ -93,6 +93,8 @@ function App() {
     deleteTaskInstance,
     startTask,
     stopTask,
+    loadFromServer,
+    updateTaskInstanceStatus,
   } = useAccountStore();
 
   // 本地状态
@@ -122,7 +124,64 @@ function App() {
   const [loadedFullTaskLogs, setLoadedFullTaskLogs] = useState<any[]>([]); // 从 IndexedDB 加载的完整任务日志（用于详情弹窗）
   const [logsLoading, setLogsLoading] = useState(false);
   const [instanceLatestLogs, setInstanceLatestLogs] = useState<Map<string, { timestamp: string; message: string; level: string }>>(new Map());
-  
+
+  // 轮询定时器引用
+  const pollingIntervalsRef = useRef<Map<string, NodeJS.Timeout>>(new Map());
+
+  // 清理所有轮询
+  const clearAllPolling = useCallback(() => {
+    pollingIntervalsRef.current.forEach((intervalId) => {
+      clearInterval(intervalId);
+    });
+    pollingIntervalsRef.current.clear();
+  }, []);
+
+  // 开始轮询任务状态
+  const startStatusPolling = useCallback((instanceId: string) => {
+    // 如果已有轮询在运行，先清除
+    const existingInterval = pollingIntervalsRef.current.get(instanceId);
+    if (existingInterval) {
+      clearInterval(existingInterval);
+    }
+
+    const intervalId = setInterval(async () => {
+      try {
+        const status = await taskExecutionApi.getTaskStatus(instanceId);
+
+        // 更新实例状态
+        updateTaskInstanceStatus(instanceId, {
+          status: status.status as any,
+          progress: status.progress,
+          totalCount: status.totalCount,
+          successCount: status.successCount,
+          errorCount: status.errorCount,
+        });
+
+        // 任务完成时停止轮询
+        if (!status.isRunning) {
+          const interval = pollingIntervalsRef.current.get(instanceId);
+          if (interval) {
+            clearInterval(interval);
+            pollingIntervalsRef.current.delete(instanceId);
+          }
+          // 最终刷新数据以获取完整信息
+          await loadFromServer();
+        }
+      } catch (error) {
+        console.error('轮询任务状态失败:', error);
+      }
+    }, 2000); // 每2秒轮询一次
+
+    pollingIntervalsRef.current.set(instanceId, intervalId);
+  }, [updateTaskInstanceStatus, loadFromServer]);
+
+  // 组件卸载时清理所有轮询
+  useEffect(() => {
+    return () => {
+      clearAllPolling();
+    };
+  }, [clearAllPolling]);
+
   // 处理登录成功
   const handleLoginSuccess = () => {
     setIsAuthenticated(true);
@@ -496,21 +555,23 @@ function App() {
     }
   };
 
-  // 启动任务执行（内部函数）
+  // 启动任务执行（内部函数）- 调用后端 API
   const startTaskExecution = async (taskId: string) => {
     const task = tasks.find((t) => t.id === taskId);
     if (!task) return;
 
     try {
-      // 创建任务实例
-      const instance = await startTask(taskId);
-      message.success('任务已开始执行');
-
-      // 异步执行任务
-      executeTask(task, instance).catch((error) => {
-        console.error('任务执行失败:', error);
-        message.error(`任务执行失败：${error.message}`);
-      });
+      // 调用后端 API 启动任务
+      const result = await taskExecutionApi.executeTask(taskId);
+      if (result.success) {
+        message.success('任务已开始执行');
+        // 刷新任务实例列表
+        await loadFromServer();
+        // 开始轮询任务状态
+        if (result.instanceId) {
+          startStatusPolling(result.instanceId);
+        }
+      }
     } catch (error: any) {
       message.error(`启动任务失败：${error.message}`);
     }
@@ -518,14 +579,17 @@ function App() {
 
 
 
-  // 处理停止任务
+  // 处理停止任务 - 调用后端 API
   const handleStopTask = async (instanceId: string) => {
-    const stopped = stopTaskExecution(instanceId);
-    if (stopped) {
-      await stopTask(instanceId);
-      message.success('任务已停止');
-    } else {
-      message.warning('任务未在运行或已停止');
+    try {
+      const result = await taskExecutionApi.stopTask(instanceId);
+      if (result.success) {
+        message.success('任务已停止');
+        // 刷新任务实例列表
+        await loadFromServer();
+      }
+    } catch (error: any) {
+      message.error(`停止任务失败：${error.message}`);
     }
   };
 

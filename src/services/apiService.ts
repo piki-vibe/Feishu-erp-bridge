@@ -182,6 +182,88 @@ export const instanceApi = {
   },
 };
 
+// 任务执行 API
+export const taskExecutionApi = {
+  // 启动任务执行
+  executeTask: async (taskId: string) => {
+    return request<{
+      success: boolean;
+      instanceId: string;
+      message: string;
+    }>(`/tasks/${taskId}/execute`, {
+      method: 'POST',
+    });
+  },
+
+  // 停止任务执行
+  stopTask: async (instanceId: string) => {
+    return request<{ success: boolean; message: string }>(`/tasks/${instanceId}/stop`, {
+      method: 'POST',
+    });
+  },
+
+  // 获取任务状态
+  getTaskStatus: async (instanceId: string) => {
+    return request<{
+      success: boolean;
+      status: string;
+      progress: number;
+      totalCount: number;
+      successCount: number;
+      errorCount: number;
+      isRunning: boolean;
+      startTime?: string;
+      endTime?: string;
+    }>(`/tasks/${instanceId}/status`);
+  },
+};
+
+// 日志 API
+export const logsApi = {
+  // 保存 WebAPI 日志
+  saveWebApiLog: async (data: {
+    instanceId: string;
+    recordId: string;
+    feishuData?: any;
+    requestData?: any;
+    responseData?: any;
+    writeBackData?: any;
+    success: boolean;
+    errorMessage?: string;
+  }) => {
+    return request<{ success: boolean; saved: boolean; message: string }>('/logs/webapi', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  // 获取日志
+  getLog: async (instanceId: string) => {
+    return request<{
+      success: boolean;
+      log: {
+        id: string;
+        instanceId: string;
+        timestamp: string;
+        recordId: string;
+        feishuData?: any;
+        requestData?: any;
+        responseData?: any;
+        writeBackData?: any;
+        success: boolean;
+        errorMessage?: string;
+      };
+    }>(`/logs/${instanceId}`);
+  },
+
+  // 删除日志
+  deleteLog: async (instanceId: string) => {
+    return request<{ success: boolean; message: string }>(`/logs/${instanceId}`, {
+      method: 'DELETE',
+    });
+  },
+};
+
 // 账户管理 API
 export const accountApi = {
   // 删除账户

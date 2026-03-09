@@ -4,7 +4,7 @@
 
 [![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0-brightgreen.svg)](https://nodejs.org/)
-[![Docker](https://img.shields.io/badge/docker-compose-%3E%3D2.0-blue.svg)](https://docs.docker.com/compose/)
+[![Version](https://img.shields.io/github/package-json/v/piki-vibe/Feishu-erp-bridge)](https://github.com/piki-vibe/Feishu-erp-bridge)
 
 **GitHub 仓库**: https://github.com/piki-vibe/Feishu-erp-bridge
 
@@ -37,12 +37,14 @@
 - 📊 **双向同步**：支持数据回传，同步状态实时写入飞书
 - 🔀 **多任务并行**：支持创建多个独立任务，每个任务配置互不干扰，无限扩展业务节点
 - ✅ **智能验证**：一键验证飞书/金蝶连接、字段配置、完整流程，问题提前发现
+- 💾 **本地存储**：所有数据存储在本地，安全可控，无需担心云端数据泄露
 
 ### 安全与效率
 - 🔒 **账户隔离**：多账户独立存储，数据互不可见
 - 🚦 **原子执行**：任务暂停不会在节点间停止，保证数据准确性
 - 📱 **移动办公**：Cloudflare Tunnel 支持，随时随地查看任务状态
 - 🔍 **字段类型自动识别**：支持飞书 23 种字段类型，自动映射处理类型
+- 🔄 **实时进度**：任务执行过程中每 2 秒自动更新进度，成功/失败数量实时显示
 
 ---
 
@@ -67,8 +69,30 @@
                         ▼                       ▼                       ▼
                 ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
                 │  飞书多维表    │        │  金蝶云星空   │        │  本地文件存储 │
-                └──────────────┘        └──────────────┘        └──────────────┘
+                └──────────────┘        └──────────────┘        │  (data/)     │
+                                                                └──────────────┘
 ```
+
+### 数据存储架构
+
+**本地文件存储**：所有用户数据、任务配置、执行记录均存储在本地 `server/data/` 目录
+
+```
+server/data/
+├── {username}.json           # 用户账户配置（任务定义、金蝶/飞书配置）
+├── {username}_instances/     # 任务执行记录
+│   ├── 任务名_2026-03-10.json
+│   └── ...
+└── {username}_logs/          # WebAPI 调试日志
+    ├── {instanceId}.json
+    └── ...
+```
+
+**优势**：
+- 📦 **数据隐私**：所有数据存储在本地，不上传云端
+- 🔐 **账户隔离**：每个用户独立文件，数据互不干扰
+- 💾 **持久化**：关闭浏览器后数据不丢失
+- 🔍 **易管理**：JSON 格式存储，可直接查看和编辑
 
 ### 任务执行流程
 
@@ -77,6 +101,15 @@
 │  从飞书读取  │───▶│  数据格式化  │───▶│  发送到金蝶  │───▶│  状态回写   │
 │  多维表数据  │    │  变量替换   │    │  API 调用    │    │  到飞书     │
 └─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
+       │                                                        │
+       │                                                        ▼
+       │                                               ┌──────────────┐
+       │                                               │  本地日志存储 │
+       │                                               └──────────────┘
+       ▼
+┌──────────────┐
+│  本地配置存储 │
+└──────────────┘
 ```
 
 ### 多任务并行
@@ -106,9 +139,9 @@
 
 | 层级 | 技术 |
 |------|------|
-| 前端 | React 19 + TypeScript + Ant Design 6 + Vite |
+| 前端 | React 19 + TypeScript + Ant Design 6 + Vite + Zustand |
 | 后端 | Node.js + Express + JWT + bcrypt |
-| 数据存储 | 本地 JSON 文件（按账户隔离） |
+| 存储 | 本地 JSON 文件（按账户隔离） |
 | 公网访问 | Cloudflare Tunnel |
 
 ---
@@ -163,7 +196,7 @@ http://localhost:5173
 docker-compose down
 ```
 
-**数据持久化**：已配置 `./server/data` 和 `./logs` 两个数据卷。
+**数据持久化**：已配置 `./server/data` 和 `./logs` 两个数据卷，确保数据不丢失。
 
 ---
 
@@ -191,6 +224,8 @@ npm run start:all    # 生产模式（含 Cloudflare Tunnel）
 ### 第一步：注册账户
 
 访问应用页面，输入用户名（至少 6 位）和密码完成注册。
+
+**注意**：账户信息存储在本地 `server/data/{username}.json`，忘记密码可删除该文件重新注册。
 
 ---
 
@@ -415,6 +450,13 @@ npm run start:all
 1. 检查 `cloudflared-windows-amd64.exe` 是否存在
 2. 检查端口 5173 是否被占用
 3. 检查网络连接是否正常
+
+### 本地数据存储位置
+
+**Windows**: `server/data/` 目录（项目根目录下）
+**macOS/Linux**: 同上
+
+可定期备份 `server/data/` 目录以防数据丢失。
 
 ---
 

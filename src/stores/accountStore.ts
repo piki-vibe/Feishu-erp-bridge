@@ -58,6 +58,7 @@ interface AccountStore {
   // 任务实例
   createTaskInstance: (taskId: string) => Promise<TaskInstance>;
   updateTaskInstance: (id: string, instance: Partial<TaskInstance>) => Promise<void>;
+  updateTaskInstanceStatus: (id: string, status: Partial<TaskInstance>) => void;
   deleteTaskInstance: (id: string) => Promise<void>;
   addTaskLog: (instanceId: string, log: TaskLog) => Promise<void>;
   addWebApiLog: (instanceId: string, log: WebAPILog) => Promise<void>;
@@ -310,21 +311,22 @@ export const useAccountStore = create<AccountStore>((set, get) => ({
     await get().saveToServer();
   },
 
+  // 更新任务实例状态（用于轮询，不保存到服务器）
+  updateTaskInstanceStatus: (id: string, status: Partial<TaskInstance>) => {
+    set((state) => ({
+      taskInstances: state.taskInstances.map((i) =>
+        i.id === id ? { ...i, ...status } : i
+      ),
+    }));
+  },
+
   // 删除任务实例
   deleteTaskInstance: async (id) => {
-    // 先调用后端 API 删除执行记录文件
+    // 先调用后端 API 删除执行记录文件（后端会同时删除日志）
     try {
       await instanceApi.deleteInstance(id);
     } catch (error) {
       console.error('删除执行记录文件失败:', error);
-    }
-
-    // 删除 IndexedDB 中的日志
-    try {
-      const { logStorage } = await import('../services/logStorage');
-      await logStorage.deleteInstanceLogs(id);
-    } catch (error) {
-      console.error('删除 IndexedDB 日志失败:', error);
     }
 
     // 更新前端状态
@@ -334,20 +336,19 @@ export const useAccountStore = create<AccountStore>((set, get) => ({
     await get().saveToServer();
   },
 
-  // 添加任务日志 - 直接写入 IndexedDB，不占用内存
-  addTaskLog: async (instanceId, log) => {
-    const { logStorage } = await import('../services/logStorage');
-    await logStorage.addTaskLog(instanceId, log);
+  // 添加任务日志 - 已废弃，日志由后端管理
+  addTaskLog: async (_instanceId, _log) => {
+    console.warn('addTaskLog is deprecated, logs are managed by backend');
   },
 
-  // 添加 WebAPI 日志 - 直接写入 IndexedDB，不占用内存
-  addWebApiLog: async (instanceId, log) => {
-    const { logStorage } = await import('../services/logStorage');
-    await logStorage.addWebApiLog(instanceId, log);
+  // 添加 WebAPI 日志 - 已废弃，日志由后端管理
+  addWebApiLog: async (_instanceId, _log) => {
+    console.warn('addWebApiLog is deprecated, logs are managed by backend');
   },
 
-  // 开始任务
+  // 开始任务 - 已废弃，任务由后端执行
   startTask: async (taskId) => {
+    console.warn('startTask is deprecated, use taskExecutionApi.executeTask instead');
     const instance = await get().createTaskInstance(taskId);
     await get().updateTaskInstance(instance.id, {
       status: TaskStatus.RUNNING,
@@ -356,8 +357,9 @@ export const useAccountStore = create<AccountStore>((set, get) => ({
     return instance;
   },
 
-  // 停止任务
+  // 停止任务 - 已废弃，任务由后端管理
   stopTask: async (instanceId) => {
+    console.warn('stopTask is deprecated, use taskExecutionApi.stopTask instead');
     await get().updateTaskInstance(instanceId, {
       status: TaskStatus.ERROR,
       endTime: new Date().toISOString(),
