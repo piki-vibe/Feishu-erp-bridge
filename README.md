@@ -501,3 +501,9 @@ npm run start:all
 ## 许可证
 
 MIT License - 详见 [LICENSE](LICENSE) 文件
+
+## Update (2026-03-27)
+
+- Removed fixed default example values for Feishu task fields (`App ID`, `App Secret`, `App Token`).
+- Default `admin` account initialization now starts with empty task data (no preset Feishu/Kingdee parameters).
+

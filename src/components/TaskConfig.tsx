@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import {
   Form,
   Input,
@@ -16,10 +16,11 @@ import {
   DeleteOutlined,
   SyncOutlined,
 } from '@ant-design/icons';
-import type { TaskConfig, FeishuFieldParam, FilterCondition, WriteBackField } from '../types';
+import type { TaskConfig, FeishuFieldMeta, FeishuFieldParam, FilterCondition, WriteBackField } from '../types';
 import { useResponsive } from '../hooks/useResponsive';
 import FeishuService from '../services/feishuService';
 import { getDefaultProcessType } from '../utils/fieldTypeUtils';
+import { buildFeishuFieldPreview } from '../utils/feishuValueUtils';
 
 const { TextArea, Password } = Input;
 
@@ -30,18 +31,51 @@ interface TaskConfigProps {
   onCancel?: () => void;
 }
 
+const cloneFieldParams = (params: FeishuFieldParam[] = []): FeishuFieldParam[] =>
+  params.map((param) => ({ ...param }));
+
+const cloneFilterConditions = (conditions: FilterCondition[] = []): FilterCondition[] =>
+  conditions.map((condition) => ({ ...condition }));
+
+const cloneWriteBackFields = (fields: WriteBackField[] = []): WriteBackField[] =>
+  fields.map((field) => ({ ...field }));
+
+const cloneFeishuConfig = (config: TaskConfig['feishuConfig']): TaskConfig['feishuConfig'] => ({
+  ...config,
+  fieldParams: cloneFieldParams(config.fieldParams || []),
+  filterConditions: cloneFilterConditions(config.filterConditions || []),
+  writeBackFields: cloneWriteBackFields(config.writeBackFields || []),
+});
+
+const cloneKingdeeConfig = (config: TaskConfig['kingdeeConfig']): TaskConfig['kingdeeConfig'] => ({
+  ...config,
+  loginParams: { ...config.loginParams },
+});
+
 const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
   const { isMobile } = useResponsive();
   const [activeKey, setActiveKey] = useState<string[]>(['1']); // 手风琴展开状态
-  const [feishuConfig, setFeishuConfig] = useState(task.feishuConfig);
-  const [kingdeeConfig, setKingdeeConfig] = useState(task.kingdeeConfig);
-  const [fieldParams, setFieldParams] = useState<FeishuFieldParam[]>([...task.feishuConfig.fieldParams]);
-  const [filterConditions, setFilterConditions] = useState(task.feishuConfig.filterConditions || []);
-  const [writeBackFields, setWriteBackFields] = useState<WriteBackField[]>(task.feishuConfig.writeBackFields || []);
+  const [feishuConfig, setFeishuConfig] = useState(() => cloneFeishuConfig(task.feishuConfig));
+  const [kingdeeConfig, setKingdeeConfig] = useState(() => cloneKingdeeConfig(task.kingdeeConfig));
+  const [fieldParams, setFieldParams] = useState<FeishuFieldParam[]>(() => cloneFieldParams(task.feishuConfig.fieldParams || []));
+  const [filterConditions, setFilterConditions] = useState(() => cloneFilterConditions(task.feishuConfig.filterConditions || []));
+  const [writeBackFields, setWriteBackFields] = useState<WriteBackField[]>(() => cloneWriteBackFields(task.feishuConfig.writeBackFields || []));
 
   // 字段列表状态
-  const [fieldList, setFieldList] = useState<{ fieldName: string; fieldType: string }[]>([]);
+  const [fieldList, setFieldList] = useState<FeishuFieldMeta[]>([]);
   const [loadingFields, setLoadingFields] = useState(false);
+  const [previewLoadingId, setPreviewLoadingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const nextFeishuConfig = cloneFeishuConfig(task.feishuConfig);
+    setFeishuConfig(nextFeishuConfig);
+    setKingdeeConfig(cloneKingdeeConfig(task.kingdeeConfig));
+    setFieldParams(cloneFieldParams(nextFeishuConfig.fieldParams || []));
+    setFilterConditions(cloneFilterConditions(nextFeishuConfig.filterConditions || []));
+    setWriteBackFields(cloneWriteBackFields(nextFeishuConfig.writeBackFields || []));
+    setFieldList([]);
+    setPreviewLoadingId(null);
+  }, [task.id, task.updatedAt]);
 
   // 处理函数 - 在 fieldParamColumns 之前定义
   const handleFieldParamChange = useCallback((id: string, key: keyof FeishuFieldParam, value: any) => {
@@ -53,6 +87,100 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
   const handleDeleteFieldParam = useCallback((id: string) => {
     setFieldParams(prev => prev.filter(param => param.id !== id));
   }, []);
+
+  const handleSelectFieldForParam = useCallback((paramId: string, fieldName: string) => {
+    handleFieldParamChange(paramId, 'fieldName', fieldName);
+    const field = fieldList.find((item) => item.fieldName === fieldName);
+    if (!field) {
+      return;
+    }
+    handleFieldParamChange(paramId, 'processType', getDefaultProcessType(field.fieldType));
+    handleFieldParamChange(paramId, 'sourceFieldType', field.fieldType);
+    handleFieldParamChange(paramId, 'sourceUiType', field.uiType);
+    handleFieldParamChange(paramId, 'sourceFieldId', field.fieldId);
+  }, [fieldList, handleFieldParamChange]);
+
+  const previewValueToText = useCallback((value: any): string => {
+    if (value === null) return 'null';
+    if (value === undefined) return 'undefined';
+    if (value === '') return '(empty string)';
+    if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') {
+      return String(value);
+    }
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return String(value);
+    }
+  }, []);
+
+  const handlePreviewFieldValue = useCallback(async (param: FeishuFieldParam) => {
+    if (!param.fieldName) {
+      message.warning('请先选择字段');
+      return;
+    }
+    if (!feishuConfig.appId || !feishuConfig.appSecret || !feishuConfig.appToken || !feishuConfig.tableId) {
+      message.error('请先完善飞书配置');
+      setActiveKey(['1']);
+      return;
+    }
+
+    const fieldMeta = fieldList.find((item) => item.fieldName === param.fieldName);
+    setPreviewLoadingId(param.id);
+    try {
+      const service = new FeishuService(feishuConfig);
+      const response = await service.getTableData(
+        feishuConfig.tableId,
+        feishuConfig.viewId,
+        undefined,
+        [param.fieldName]
+      );
+      const firstRecord = response.data?.items?.[0];
+      const rawValue = firstRecord?.fields?.[param.fieldName];
+      const preview = buildFeishuFieldPreview(rawValue, {
+        processType: param.processType,
+        sourceFieldType: param.sourceFieldType ?? fieldMeta?.fieldType,
+        sourceUiType: param.sourceUiType ?? fieldMeta?.uiType,
+        decimalPlaces: param.decimalPlaces,
+        dateFormat: param.dateFormat,
+        preserveNumberScale: true,
+      });
+      const recordId = firstRecord?.record_id || '无匹配记录';
+
+      Modal.info({
+        width: 760,
+        title: '字段值预览',
+        content: (
+          <div style={{ maxHeight: 520, overflow: 'auto' }}>
+            <p><strong>字段:</strong> {param.fieldName}{fieldMeta ? ` (${fieldMeta.fieldType})` : ''}</p>
+            <p>
+              <strong>处理方式:</strong> {param.processType || 'auto'}
+              {preview.effectiveProcessType !== (param.processType || 'auto')
+                ? ` -> ${preview.effectiveProcessType}`
+                : ''}
+            </p>
+            <p><strong>记录 ID:</strong> {recordId}</p>
+            <p style={{ marginBottom: 6 }}><strong>ԭʼֵ:</strong></p>
+            <pre style={{ background: '#f7f7f7', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {previewValueToText(rawValue)}
+            </pre>
+            <p style={{ marginBottom: 6 }}><strong>提取值:</strong></p>
+            <pre style={{ background: '#f7f7f7', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {previewValueToText(preview.extractedValue)}
+            </pre>
+            <p style={{ marginBottom: 6 }}><strong>最终值:</strong></p>
+            <pre style={{ background: '#f7f7f7', padding: 10, borderRadius: 6, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>
+              {previewValueToText(preview.formattedValue)}
+            </pre>
+          </div>
+        ),
+      });
+    } catch (error: any) {
+      message.error(`查看失败：${error.message}`);
+    } finally {
+      setPreviewLoadingId(null);
+    }
+  }, [feishuConfig, fieldList, filterConditions, previewValueToText]);
 
   // 字段参数表格列
   const fieldParamColumns = useMemo(() => [
@@ -77,17 +205,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
       render: (_: string, record: FeishuFieldParam) => (
         <Select
           value={record.fieldName}
-          onChange={(value) => {
-            handleFieldParamChange(record.id, 'fieldName', value);
-            // 当字段改变时，自动设置处理类型
-            const field = fieldList.find(f => f.fieldName === value);
-            if (field && field.fieldType) {
-              const fieldTypeNum = parseInt(field.fieldType, 10);
-              const defaultProcessType = getDefaultProcessType(fieldTypeNum);
-              handleFieldParamChange(record.id, 'processType', defaultProcessType);
-              handleFieldParamChange(record.id, 'sourceFieldType', fieldTypeNum);
-            }
-          }}
+          onChange={(value) => handleSelectFieldForParam(record.id, value)}
           style={{ width: '100%' }}
           showSearch
           options={fieldList.map((field) => ({
@@ -160,19 +278,35 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
     {
       title: '操作',
       key: 'action',
-      width: 80,
+      width: 180,
       render: (_: any, record: FeishuFieldParam) => (
-        <Button
-          icon={<DeleteOutlined />}
-          danger
-          size="small"
-          onClick={() => handleDeleteFieldParam(record.id)}
-        >
-          删除
-        </Button>
+        <Space>
+          <Button
+            size="small"
+            loading={previewLoadingId === record.id}
+            onClick={() => handlePreviewFieldValue(record)}
+          >
+            查看
+          </Button>
+          <Button
+            icon={<DeleteOutlined />}
+            danger
+            size="small"
+            onClick={() => handleDeleteFieldParam(record.id)}
+          >
+            删除
+          </Button>
+        </Space>
       ),
     },
-  ], [handleFieldParamChange, handleDeleteFieldParam, fieldList]);
+  ], [
+    fieldList,
+    handleDeleteFieldParam,
+    handleFieldParamChange,
+    handlePreviewFieldValue,
+    handleSelectFieldForParam,
+    previewLoadingId,
+  ]);
 
   // 获取字段列表
   const handleRefreshFields = async () => {
@@ -186,8 +320,36 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
     try {
       const feishuService = new FeishuService(feishuConfig);
       const fields = await feishuService.getFields(feishuConfig.tableId);
-      setFieldList(fields);
-      message.success(`成功获取 ${fields.length} 个字段`);
+      const normalizedFields: FeishuFieldMeta[] = fields
+        .map((field: any) => {
+          const parsedFieldType = typeof field.fieldType === 'number'
+            ? field.fieldType
+            : Number.parseInt(String(field.fieldType), 10);
+          return {
+            fieldId: field.fieldId || field.field_id || field.id || field.fieldName || '',
+            fieldName: field.fieldName || field.field_name || '',
+            fieldType: Number.isFinite(parsedFieldType) ? parsedFieldType : 1,
+            uiType: field.uiType || field.ui_type,
+            isPrimary: field.isPrimary ?? field.is_primary,
+            property: field.property,
+          };
+        })
+        .filter((field: FeishuFieldMeta) => !!field.fieldName);
+
+      setFieldList(normalizedFields);
+      setFieldParams((prev) => prev.map((param) => {
+        const matchedField = normalizedFields.find((item) => item.fieldName === param.fieldName);
+        if (!matchedField) {
+          return param;
+        }
+        return {
+          ...param,
+          sourceFieldType: param.sourceFieldType ?? matchedField.fieldType,
+          sourceUiType: param.sourceUiType ?? matchedField.uiType,
+          sourceFieldId: param.sourceFieldId ?? matchedField.fieldId,
+        };
+      }));
+      message.success(`成功获取 ${normalizedFields.length} 个字段`);
     } catch (error: any) {
       message.error(`获取字段列表失败：${error.message}`);
     } finally {
@@ -250,36 +412,40 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
   }, []);
 
   const handleSave = () => {
+    const nextFeishuConfig = cloneFeishuConfig({
+      ...feishuConfig,
+      fieldParams: cloneFieldParams(fieldParams),
+      filterConditions: cloneFilterConditions(filterConditions),
+      writeBackFields: cloneWriteBackFields(writeBackFields),
+    });
+
     const updatedTask: TaskConfig = {
       ...task,
-      feishuConfig: {
-        ...feishuConfig,
-        fieldParams,
-        filterConditions,
-        writeBackFields,
-      },
-      kingdeeConfig,
+      feishuConfig: nextFeishuConfig,
+      kingdeeConfig: cloneKingdeeConfig(kingdeeConfig),
     };
 
     onSave(updatedTask);
   };
 
   // 移动端字段参数卡片
-  const renderMobileFieldParamCard = (param: FeishuFieldParam) => (
-    <div
-      key={param.id}
-      style={{
-        marginBottom: '12px',
-        padding: '12px',
-        border: '1px solid #d9d9d9',
-        borderRadius: '8px',
-        background: '#fafafa',
-      }}
-    >
-      <div style={{ fontWeight: 600, color: '#2C3E50', marginBottom: '8px' }}>
-        字段参数
-      </div>
-      <Form layout="vertical" size="large">
+  const renderMobileFieldParamCard = (param: FeishuFieldParam) => {
+    const processType = param.processType || 'auto';
+    return (
+      <div
+        key={param.id}
+        style={{
+          marginBottom: '12px',
+          padding: '12px',
+          border: '1px solid #d9d9d9',
+          borderRadius: '8px',
+          background: '#fafafa',
+        }}
+      >
+        <div style={{ fontWeight: 600, color: '#2C3E50', marginBottom: '8px' }}>
+          字段参数
+        </div>
+        <Form layout="vertical" size="large">
         <Form.Item label="变量名" style={{ marginBottom: '12px' }}>
           <Input
             value={param.variableName}
@@ -291,28 +457,18 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
         <Form.Item label="字段名" style={{ marginBottom: '12px' }}>
           <Select
             value={param.fieldName}
-            onChange={(value) => {
-              handleFieldParamChange(param.id, 'fieldName', value);
-              // 当字段改变时，自动设置处理类型
-              const field = fieldList.find(f => f.fieldName === value);
-              if (field && field.fieldType) {
-                const fieldTypeNum = parseInt(field.fieldType, 10);
-                const defaultProcessType = getDefaultProcessType(fieldTypeNum);
-                handleFieldParamChange(param.id, 'processType', defaultProcessType);
-                handleFieldParamChange(param.id, 'sourceFieldType', fieldTypeNum);
-              }
-            }}
+            onChange={(value) => handleSelectFieldForParam(param.id, value)}
             style={{ width: '100%', height: '44px', fontSize: '16px' }}
             showSearch
             options={fieldList.map((field) => ({
-              label: field.fieldName,
+              label: `${field.fieldName} (${field.fieldType})`,
               value: field.fieldName,
             }))}
           />
         </Form.Item>
         <Form.Item label="处理类型" style={{ marginBottom: '12px' }}>
           <Select
-            value={param.processType || 'auto'}
+            value={processType}
             onChange={(value) => handleFieldParamChange(param.id, 'processType', value)}
             style={{ width: '100%', height: '44px', fontSize: '16px' }}
             options={[
@@ -327,7 +483,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
             ]}
           />
         </Form.Item>
-        {(param.processType === 'number' || param.processType === 'auto') && (
+        {processType === 'number' && (
           <Form.Item label="小数位数" style={{ marginBottom: '12px' }}>
             <InputNumber
               min={0}
@@ -340,7 +496,12 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
             />
           </Form.Item>
         )}
-        {(param.processType === 'date' || param.processType === 'datetime') && (
+        {processType === 'auto' && (
+          <div style={{ marginBottom: '12px', color: '#999', fontSize: '13px' }}>
+            自动模式无需配置格式
+          </div>
+        )}
+        {(processType === 'date' || processType === 'datetime') && (
           <Form.Item label="日期格式" style={{ marginBottom: 0 }}>
             <Select
               value={param.dateFormat || 'YYYY-MM-DD'}
@@ -357,17 +518,27 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
         )}
       </Form>
       <Button
+        size="large"
+        loading={previewLoadingId === param.id}
+        onClick={() => handlePreviewFieldValue(param)}
+        block
+        style={{ marginTop: '12px', height: '44px', borderRadius: '8px' }}
+      >
+        查看第一条记录值
+      </Button>
+      <Button
         icon={<DeleteOutlined />}
         danger
         size="large"
         onClick={() => handleDeleteFieldParam(param.id)}
         block
-        style={{ marginTop: '12px', height: '44px', borderRadius: '8px' }}
+        style={{ marginTop: '10px', height: '44px', borderRadius: '8px' }}
       >
         删除此参数
       </Button>
-    </div>
-  );
+      </div>
+    );
+  };
 
   // 移动端筛选条件卡片
   const renderMobileFilterCard = (condition: FilterCondition) => {
@@ -414,7 +585,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
               ]}
             />
           </Form.Item>
-          <Form.Item label="值" style={{ marginBottom: 0 }}>
+          <Form.Item label="ֵ" style={{ marginBottom: 0 }}>
             <Input
               value={condition.value || ''}
               onChange={(e) => handleFilterConditionChange(condition.id, 'value', e.target.value)}
@@ -511,7 +682,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
             <Input
               value={feishuConfig.appId || ''}
               onChange={(e) => setFeishuConfig({ ...feishuConfig, appId: e.target.value })}
-              placeholder="cli_a9a3c20f1178dcc1"
+              placeholder="请输入 App ID"
               size="large"
             />
           </Form.Item>
@@ -519,7 +690,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
             <Input
               value={feishuConfig.appSecret || ''}
               onChange={(e) => setFeishuConfig({ ...feishuConfig, appSecret: e.target.value })}
-              placeholder="HZOqHVAZ7gLxgQLvDjpZOxIt36zNW85p"
+              placeholder="请输入 App Secret"
               size="large"
             />
           </Form.Item>
@@ -527,7 +698,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
             <Input
               value={feishuConfig.appToken}
               onChange={(e) => setFeishuConfig({ ...feishuConfig, appToken: e.target.value })}
-              placeholder="YiFubTwajaRZ1GsTnnocXLesn7g"
+              placeholder="请输入 App Token"
               size="large"
             />
           </Form.Item>
@@ -657,7 +828,7 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
                     ),
                   },
                   {
-                    title: '值',
+                    title: 'ֵ',
                     dataIndex: 'value',
                     key: 'value',
                     render: (_: string, record: FilterCondition) => {
