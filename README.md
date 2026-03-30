@@ -15,7 +15,7 @@
   - 筛选条件
   - 回写字段
 - 配置金蝶目标：
-  - `baseUrl`、`acctId`、`dbId`
+  - `baseUrl`、`acctId`或`dbId`、
   - `appId`、`appSecret`
   - `username`、`password`
   - `formId`
