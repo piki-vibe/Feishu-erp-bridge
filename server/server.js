@@ -3,14 +3,19 @@ import cors from 'cors';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import fs from 'fs/promises';
+import http from 'http';
 import path from 'path';
+import { execFile } from 'child_process';
+import { promisify } from 'util';
 import { fileURLToPath } from 'url';
 import { createRequire } from 'module';
 import { TaskExecutor, TaskStatus, getRunningTasks, addRunningTask, removeRunningTask, getRunningTask } from './taskExecutor.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+const projectRoot = path.resolve(__dirname, '..');
 const require = createRequire(import.meta.url);
+const execFileAsync = promisify(execFile);
 
 // 閹嗗厴娴兼ê瀵查敍姘▏閻劌鍞寸€涙绱︾€涙ê噺灏戞枃浠惰鍙?
 const cache = new Map();
@@ -20,58 +25,326 @@ const app = express();
 const PORT = 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'kingdee-sync-secret-key-2024';
 const DATA_DIR = path.join(__dirname, 'data');
+const OCR_PORT = Number(process.env.OCR_PORT || 5000);
+const OCR_BASE_URL = process.env.OCR_BASE_URL || `http://127.0.0.1:${OCR_PORT}`;
+const OCR_MANAGE_MODE = String(
+  process.env.OCR_MANAGE_MODE || (process.platform === 'win32' ? 'script' : 'none')
+).trim().toLowerCase();
+const OCR_CONTAINER_NAME = process.env.OCR_CONTAINER_NAME || 'keyupan-erp-ocr';
+const DOCKER_SOCKET_PATH = process.env.DOCKER_SOCKET_PATH || '/var/run/docker.sock';
+const OCR_START_SCRIPT = path.join(projectRoot, process.platform === 'win32' ? 'scripts/start-ocr.ps1' : 'scripts/start-ocr.sh');
+const OCR_STOP_SCRIPT = path.join(projectRoot, process.platform === 'win32' ? 'scripts/stop-ocr.ps1' : 'scripts/stop-ocr.sh');
+const ENABLE_HTTP_LOG = process.env.ENABLE_HTTP_LOG === 'true';
+const ENABLE_VERBOSE_LOG = process.env.ENABLE_VERBOSE_LOG === 'true';
+const ENABLE_INFO_LOG = process.env.ENABLE_INFO_LOG === 'true';
+const verboseLog = (...args) => {
+  if (ENABLE_VERBOSE_LOG) {
+    console.log(...args);
+  }
+};
+const infoLog = (...args) => {
+  if (ENABLE_INFO_LOG) {
+    console.log(...args);
+  }
+};
 
-// 閸樺缂夋稉顓㈡？娴?- 閸戝繐鐨导鐘虹翻閺佺増宓侀柌?
-app.use((req, res, next) => {
-  const gzip = require('zlib').gzip;
-  const origWrite = res.write.bind(res);
-  const origEnd = res.end.bind(res);
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
 
-  if (req.headers['accept-encoding']?.includes('gzip')) {
-    const chunks = [];
-    res.write = (chunk) => {
-      if (chunk !== null) chunks.push(Buffer.from(chunk));
-      return true;
-    };
-    res.end = (chunk) => {
-      if (chunk) chunks.push(Buffer.from(chunk));
-      if (chunks.length > 0) {
-        const data = Buffer.concat(chunks);
-        gzip(data, (err, compressed) => {
-          if (!err) {
-            res.setHeader('Content-Encoding', 'gzip');
-            res.setHeader('Content-Length', compressed.length);
-            origWrite(compressed);
-          } else {
-            origWrite(data);
-          }
-          origEnd();
+async function runPowerShellScript(scriptPath, timeout = 90000) {
+  return runLocalScript(scriptPath, timeout);
+}
+
+async function runLocalScript(scriptPath, timeout = 90000) {
+  const isWindows = process.platform === 'win32';
+  const executable = isWindows ? 'powershell.exe' : 'bash';
+  const args = isWindows
+    ? ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', scriptPath]
+    : [scriptPath];
+
+  const { stdout, stderr } = await execFileAsync(
+    executable,
+    args,
+    {
+      cwd: projectRoot,
+      timeout,
+      maxBuffer: 1024 * 1024,
+    }
+  );
+
+  return {
+    stdout: String(stdout || '').trim(),
+    stderr: String(stderr || '').trim(),
+  };
+}
+
+function parseDockerJson(payload) {
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(payload);
+  } catch {
+    return null;
+  }
+}
+
+async function callDockerApi(method, requestPath) {
+  if (process.platform === 'win32') {
+    throw new Error('Docker socket is only available on Linux deployments');
+  }
+
+  return await new Promise((resolve, reject) => {
+    const req = http.request(
+      {
+        socketPath: DOCKER_SOCKET_PATH,
+        path: `/v1.41${requestPath}`,
+        method,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      },
+      (res) => {
+        let raw = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => {
+          raw += chunk;
         });
-        return;
+        res.on('end', () => {
+          const payload = {
+            statusCode: res.statusCode || 500,
+            body: raw,
+          };
+
+          if (payload.statusCode >= 200 && payload.statusCode < 300) {
+            resolve(payload);
+            return;
+          }
+
+          const parsed = parseDockerJson(raw);
+          const message = parsed?.message || raw || `Docker API request failed: ${method} ${requestPath}`;
+          reject(new Error(message));
+        });
       }
-      origEnd();
+    );
+
+    req.on('error', reject);
+    req.end();
+  });
+}
+
+async function inspectDockerContainer(containerName) {
+  try {
+    const response = await callDockerApi('GET', `/containers/${encodeURIComponent(containerName)}/json`);
+    const payload = parseDockerJson(response.body);
+    return {
+      exists: true,
+      running: payload?.State?.Running === true,
+      status: payload?.State?.Status || null,
+      restartCount: payload?.RestartCount ?? null,
+    };
+  } catch (error) {
+    if (String(error.message || '').toLowerCase().includes('no such container')) {
+      return {
+        exists: false,
+        running: false,
+        status: 'missing',
+        restartCount: null,
+      };
+    }
+    throw error;
+  }
+}
+
+async function startDockerContainer(containerName) {
+  const state = await inspectDockerContainer(containerName);
+  if (!state.exists) {
+    throw new Error(`OCR container not found: ${containerName}`);
+  }
+  if (state.running) {
+    return {
+      stdout: `OCR container already running: ${containerName}`,
+      stderr: '',
     };
   }
-  next();
-});
+
+  await callDockerApi('POST', `/containers/${encodeURIComponent(containerName)}/start`);
+  return {
+    stdout: `Started OCR container: ${containerName}`,
+    stderr: '',
+  };
+}
+
+async function stopDockerContainer(containerName) {
+  const state = await inspectDockerContainer(containerName);
+  if (!state.exists) {
+    throw new Error(`OCR container not found: ${containerName}`);
+  }
+  if (!state.running) {
+    return {
+      stdout: `OCR container already stopped: ${containerName}`,
+      stderr: '',
+    };
+  }
+
+  await callDockerApi('POST', `/containers/${encodeURIComponent(containerName)}/stop?t=20`);
+  return {
+    stdout: `Stopped OCR container: ${containerName}`,
+    stderr: '',
+  };
+}
+
+async function startManagedOcrService() {
+  if (OCR_MANAGE_MODE === 'docker') {
+    return await startDockerContainer(OCR_CONTAINER_NAME);
+  }
+
+  if (OCR_MANAGE_MODE === 'script') {
+    return await runLocalScript(OCR_START_SCRIPT, 120000);
+  }
+
+  throw new Error('OCR service management is disabled in the current environment');
+}
+
+async function stopManagedOcrService() {
+  if (OCR_MANAGE_MODE === 'docker') {
+    return await stopDockerContainer(OCR_CONTAINER_NAME);
+  }
+
+  if (OCR_MANAGE_MODE === 'script') {
+    return await runLocalScript(OCR_STOP_SCRIPT, 60000);
+  }
+
+  throw new Error('OCR service management is disabled in the current environment');
+}
+
+async function fetchOcrHealth() {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 2500);
+
+  try {
+    const response = await fetch(`${OCR_BASE_URL}/health`, {
+      method: 'GET',
+      signal: controller.signal,
+    });
+
+    if (!response.ok) {
+      return null;
+    }
+
+    return await response.json();
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+function resolvePublicBaseUrl(req) {
+  const forwardedProto = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+  const forwardedHost = String(req.headers['x-forwarded-host'] || '').split(',')[0].trim();
+  const host = forwardedHost || req.headers.host || '';
+  const protocol = forwardedProto || req.protocol || 'http';
+
+  if (!host) {
+    return OCR_BASE_URL;
+  }
+
+  return `${protocol}://${host}`;
+}
+
+async function getOcrServiceStatus(publicBaseUrl = OCR_BASE_URL) {
+  const health = await fetchOcrHealth();
+  const managedContainer = OCR_MANAGE_MODE === 'docker'
+    ? await inspectDockerContainer(OCR_CONTAINER_NAME)
+    : null;
+
+  return {
+    running: !!health,
+    baseUrl: publicBaseUrl,
+    extractUrl: `${publicBaseUrl}/api/extract`,
+    batchUrl: `${publicBaseUrl}/api/extract-batch`,
+    supportedFormats: ['pdf', 'jpg', 'jpeg', 'png', 'bmp', 'webp'],
+    lowPowerMode: true,
+    manageMode: OCR_MANAGE_MODE,
+    managedContainer,
+    processIsolated: health?.process_isolated === true,
+    health: health || null,
+  };
+}
+
+async function proxyOcrRequest(req, res, targetPath) {
+  try {
+    const headers = {};
+    const contentType = req.headers['content-type'];
+    if (contentType) {
+      headers['Content-Type'] = contentType;
+    }
+
+    let body;
+    const requestOptions = {
+      method: req.method,
+      headers,
+    };
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      if (req.is('application/json')) {
+        body = JSON.stringify(req.body || {});
+      } else {
+        body = req;
+        requestOptions.duplex = 'half';
+      }
+      requestOptions.body = body;
+    }
+
+    const response = await fetch(`${OCR_BASE_URL}${targetPath}`, requestOptions);
+    const responseText = await response.text();
+    const upstreamContentType = response.headers.get('content-type');
+    if (upstreamContentType) {
+      res.setHeader('Content-Type', upstreamContentType);
+    }
+    res.status(response.status).send(responseText);
+  } catch (error) {
+    console.error(`OCR proxy failed for ${targetPath}:`, error);
+    res.status(502).json({
+      error: error?.message || 'OCR proxy request failed',
+    });
+  }
+}
+
+async function waitForOcrRunning(expectedRunning, timeoutMs = 120000, intervalMs = 1000, publicBaseUrl = OCR_BASE_URL) {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    const status = await getOcrServiceStatus(publicBaseUrl);
+    if (status.running === expectedRunning) {
+      return status;
+    }
+    await sleep(intervalMs);
+  } while (Date.now() < deadline);
+
+  return await getOcrServiceStatus(publicBaseUrl);
+}
 
 // 涓棿浠?
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-// 鐠囬攱鐪伴弮銉ョ箶娑擃參妫挎禒?
-app.use((req, res, next) => {
-  const start = Date.now();
-  const timestamp = new Date().toISOString();
-  console.log(`[${timestamp}] --> ${req.method} ${req.url}`);
+if (ENABLE_HTTP_LOG) {
+  app.use((req, res, next) => {
+    const start = Date.now();
+    const timestamp = new Date().toISOString();
+    console.log(`[${timestamp}] --> ${req.method} ${req.url}`);
 
-  res.on('finish', () => {
-    const duration = Date.now() - start;
-    console.log(`[${timestamp}] <-- ${req.method} ${req.url} ${res.statusCode} (${duration}ms)`);
+    res.on('finish', () => {
+      const duration = Date.now() - start;
+      console.log(`[${timestamp}] <-- ${req.method} ${req.url} ${res.statusCode} (${duration}ms)`);
+    });
+
+    next();
   });
-
-  next();
-});
+}
 
 // 缂傛挸鐡ㄦ稉顓㈡？娴?
 function cacheMiddleware(ttl = CACHE_TTL) {
@@ -118,6 +391,99 @@ async function ensureDataDir() {
 // 閼惧嘲褰囩拹锔藉煕娑撶粯鏋冩禒鎯扮熅瀵?
 function getAccountFilePath(username) {
   return path.join(DATA_DIR, `${username}.json`);
+}
+
+function normalizeLegacyKingdeeLoginParams(loginParams) {
+  if (!loginParams || typeof loginParams !== 'object') {
+    return loginParams;
+  }
+
+  const normalized = { ...loginParams };
+  if (!normalized.username && normalized.userName) {
+    normalized.username = normalized.userName;
+  }
+  if ('userName' in normalized) {
+    delete normalized.userName;
+  }
+  return normalized;
+}
+
+function normalizeKingdeeApiMethod(apiMethod) {
+  return typeof apiMethod === 'string' && apiMethod.trim()
+    ? apiMethod.trim()
+    : 'Save';
+}
+
+function normalizeKingdeeOpNumber(opNumber) {
+  return typeof opNumber === 'string' ? opNumber.trim() : '';
+}
+
+function normalizeTaskConfigForClient(task) {
+  if (!task || typeof task !== 'object') {
+    return task;
+  }
+
+  if (!task.kingdeeConfig || typeof task.kingdeeConfig !== 'object') {
+    return task;
+  }
+
+  return {
+    ...task,
+    kingdeeConfig: {
+      ...task.kingdeeConfig,
+      apiMethod: normalizeKingdeeApiMethod(task.kingdeeConfig.apiMethod),
+      opNumber: normalizeKingdeeOpNumber(task.kingdeeConfig.opNumber),
+      loginParams: normalizeLegacyKingdeeLoginParams(task.kingdeeConfig.loginParams),
+    },
+  };
+}
+
+function normalizeTaskConfigsForClient(tasks = []) {
+  if (!Array.isArray(tasks)) {
+    return [];
+  }
+  return tasks.map((task) => normalizeTaskConfigForClient(task));
+}
+
+const fileWriteQueue = new Map();
+
+function enqueueFileWrite(filePath, task) {
+  const previous = fileWriteQueue.get(filePath) || Promise.resolve();
+  const next = previous.catch(() => {}).then(task);
+  const tracked = next.finally(() => {
+    if (fileWriteQueue.get(filePath) === tracked) {
+      fileWriteQueue.delete(filePath);
+    }
+  });
+  fileWriteQueue.set(filePath, tracked);
+  return tracked;
+}
+
+async function waitForPendingFileWrite(filePath) {
+  const pending = fileWriteQueue.get(filePath);
+  if (pending) {
+    await pending.catch(() => {});
+  }
+}
+
+async function readJsonFileSafely(filePath) {
+  await waitForPendingFileWrite(filePath);
+  return JSON.parse(await fs.readFile(filePath, 'utf8'));
+}
+
+async function writeJsonFileSafely(filePath, data) {
+  return enqueueFileWrite(filePath, async () => {
+    const payload = JSON.stringify(data, null, 2);
+    const tempPath = `${filePath}.${process.pid}.${Date.now()}.tmp`;
+    await fs.writeFile(tempPath, payload, 'utf8');
+
+    try {
+      await fs.rename(tempPath, filePath);
+    } catch {
+      await fs.copyFile(tempPath, filePath);
+      await fs.unlink(tempPath).catch(() => {});
+    }
+  });
 }
 
 // 鑾峰彇璐︽埛鎵ц璁板綍鐩綍
@@ -173,6 +539,73 @@ function authMiddleware(req, res, next) {
   }
 }
 
+app.post('/api/extract', async (req, res) => {
+  await proxyOcrRequest(req, res, '/api/extract');
+});
+
+app.post('/api/extract-batch', async (req, res) => {
+  await proxyOcrRequest(req, res, '/api/extract-batch');
+});
+
+app.get('/api/ocr/service/status', authMiddleware, async (req, res) => {
+  try {
+    const status = await getOcrServiceStatus(resolvePublicBaseUrl(req));
+    res.json({
+      success: true,
+      ...status,
+    });
+  } catch (error) {
+    console.error('获取 OCR 服务状态失败:', error);
+    res.status(500).json({ error: '获取 OCR 服务状态失败' });
+  }
+});
+
+app.post('/api/ocr/service/start', authMiddleware, async (req, res) => {
+  try {
+    const publicBaseUrl = resolvePublicBaseUrl(req);
+    const output = await startManagedOcrService();
+    const status = await waitForOcrRunning(true, 120000, 1000, publicBaseUrl);
+
+    if (!status.running) {
+      return res.status(500).json({
+        error: output.stderr || output.stdout || 'OCR 服务启动失败',
+      });
+    }
+
+    res.json({
+      success: true,
+      message: 'OCR 服务已启动',
+      output: output.stdout,
+      ...status,
+    });
+  } catch (error) {
+    console.error('启动 OCR 服务失败:', error);
+    res.status(500).json({
+      error: error?.stderr || error?.stdout || error?.message || '启动 OCR 服务失败',
+    });
+  }
+});
+
+app.post('/api/ocr/service/stop', authMiddleware, async (req, res) => {
+  try {
+    const publicBaseUrl = resolvePublicBaseUrl(req);
+    const output = await stopManagedOcrService();
+    const status = await waitForOcrRunning(false, 30000, 500, publicBaseUrl);
+
+    res.json({
+      success: true,
+      message: 'OCR 服务已关闭',
+      output: output.stdout,
+      ...status,
+    });
+  } catch (error) {
+    console.error('关闭 OCR 服务失败:', error);
+    res.status(500).json({
+      error: error?.stderr || error?.stdout || error?.message || '关闭 OCR 服务失败',
+    });
+  }
+});
+
 // 娣囨繂鐡?WebAPI 閺冦儱绻?- 閸欘亙绻氱€涙顑囨稉鈧弶陇顔囪ぐ鏇犳畱閺冦儱绻?
 async function saveWebApiLog(username, instanceId, logData) {
   const logsDir = getAccountLogsDir(username);
@@ -188,7 +621,7 @@ async function saveWebApiLog(username, instanceId, logData) {
   // 濡偓閺屻儲妲搁崥锕€鍑＄€涙ê婀弮銉ョ箶閺傚洣娆㈤敍灞筋洤閺嬫粌鐡ㄩ崷銊ュ灟娑撳秴鍟€娣囨繂鐡ㄩ敍鍫濆涧娣囨繂鐡ㄧ粭顑跨閺夆槄绱?
   try {
     await fs.access(logFilePath);
-    console.log(`閺冦儱绻旈弬鍥︽瀹告彃鐡ㄩ崷顭掔礉鐠哄疇绻冩穱婵嗙摠: ${instanceId}`);
+    infoLog(`[WebAPI日志] 已存在，跳过写入: ${instanceId}`);
     return false;
   } catch {
     // 閺傚洣娆㈡稉宥呯摠閸︻煉绱濋崣顖欎簰娣囨繂鐡?
@@ -202,7 +635,7 @@ async function saveWebApiLog(username, instanceId, logData) {
   };
 
   await fs.writeFile(logFilePath, JSON.stringify(logEntry, null, 2));
-  console.log(`WebAPI 閺冦儱绻斿韫箽鐎? ${instanceId}`);
+  infoLog(`[WebAPI日志] 写入成功: ${instanceId}`);
   return true;
 }
 
@@ -244,7 +677,7 @@ async function initAccountData(username) {
       tasks: [],
       lastModified: new Date().toISOString(),
     };
-    await fs.writeFile(accountPath, JSON.stringify(accountData, null, 2));
+    await writeJsonFileSafely(accountPath, accountData);
   }
 
   try {
@@ -266,7 +699,8 @@ async function readAccountData(username) {
   const instancesDir = getAccountInstancesDir(username);
 
   try {
-    const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+    const data = await readJsonFileSafely(accountPath);
+    const normalizedTasks = normalizeTaskConfigsForClient(data.tasks);
 
     const taskInstances = [];
     try {
@@ -278,7 +712,7 @@ async function readAccountData(username) {
         .filter(f => f.endsWith('.json'))
         .map(async (file) => {
           try {
-            return JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+            return await readJsonFileSafely(path.join(instancesDir, file));
           } catch {
             return null;
           }
@@ -293,9 +727,9 @@ async function readAccountData(username) {
     // 閹稿绱戞慨瀣闂存帓搴?
     taskInstances.sort((a, b) => new Date(b.startTime || 0) - new Date(a.startTime || 0));
 
-    return { ...data, taskInstances };
+    return { ...data, tasks: normalizedTasks, taskInstances };
   } catch (error) {
-    throw new Error('璇诲彇璐︽埛鏁版嵁澶辫触');
+    throw new Error('读取账户数据失败');
   }
 }
 
@@ -304,14 +738,13 @@ async function saveAccountData(username, data) {
   const accountPath = getAccountFilePath(username);
   const { taskInstances, ...accountData } = data;
 
-  await fs.writeFile(
-    accountPath,
-    JSON.stringify({ ...accountData, lastModified: new Date().toISOString() }, null, 2)
-  );
+  await writeJsonFileSafely(accountPath, {
+    ...accountData,
+    tasks: normalizeTaskConfigsForClient(accountData.tasks),
+    lastModified: new Date().toISOString(),
+  });
 }
 
-// 娣囨繂鐡ㄩ崡鏇氶嚋閹笛嗩攽鐠佹澘缍?- 娴兼ê瀵查敍姘▏閻劍澹掗柌蹇撳晸閸?
-const writeQueue = new Map();
 async function saveInstanceFile(username, instance) {
   const instancesDir = getAccountInstancesDir(username);
 
@@ -325,8 +758,8 @@ async function saveInstanceFile(username, instance) {
   const filename = `${instance.id}.json`;
   const filepath = path.join(instancesDir, filename);
 
-  await fs.writeFile(filepath, JSON.stringify(instance, null, 2));
-  console.log(`[实例创建] ${instance.id} 已保存到文件 ${filename}`);
+  await writeJsonFileSafely(filepath, instance);
+  infoLog(`[实例创建] ${instance.id} 已保存到文件 ${filename}`);
   return filename;
 }
 
@@ -344,7 +777,7 @@ async function deleteInstanceFile(username, instanceId) {
   for (const file of files) {
     if (file.endsWith('.json')) {
       try {
-        const instance = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+        const instance = await readJsonFileSafely(path.join(instancesDir, file));
         if (instance.id === instanceId) {
           await fs.unlink(path.join(instancesDir, file));
           // 閸氬本妞傞崚鐘绘珟閸忓疇浠堥惃鍕）韫囨枃浠?
@@ -375,7 +808,7 @@ async function deleteTaskInstances(username, taskId) {
     .filter(f => f.endsWith('.json'))
     .map(async (file) => {
       try {
-        const instance = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+        const instance = await readJsonFileSafely(path.join(instancesDir, file));
         if (instance.taskId === taskId) {
           await fs.unlink(path.join(instancesDir, file));
           deletedCount++;
@@ -423,7 +856,7 @@ app.post('/api/auth/register', async (req, res) => {
       tasks: [],
       lastModified: new Date().toISOString(),
     };
-    await fs.writeFile(accountPath, JSON.stringify(accountData, null, 2));
+    await writeJsonFileSafely(accountPath, accountData);
 
     const token = jwt.sign(
       { userId: account.id, username: account.username },
@@ -463,7 +896,7 @@ app.post('/api/auth/login', async (req, res) => {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
 
-    const accountData = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+    const accountData = await readJsonFileSafely(accountPath);
     const account = accountData.account;
 
     if (!account) {
@@ -476,7 +909,7 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     account.lastLoginAt = new Date().toISOString();
-    await fs.writeFile(accountPath, JSON.stringify(accountData, null, 2));
+    await writeJsonFileSafely(accountPath, accountData);
 
     const token = jwt.sign(
       { userId: account.id, username: account.username },
@@ -549,7 +982,7 @@ app.post('/api/data', authMiddleware, async (req, res) => {
         const files = await fs.readdir(instancesDir);
         for (const file of files) {
           if (file.endsWith('.json')) {
-            const existing = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+            const existing = await readJsonFileSafely(path.join(instancesDir, file));
             existingFiles.set(existing.id, file);
           }
         }
@@ -565,7 +998,7 @@ app.post('/api/data', authMiddleware, async (req, res) => {
         const instanceData = { ...instance, taskName };
 
         if (existingFile) {
-          await fs.writeFile(path.join(instancesDir, existingFile), JSON.stringify(instanceData, null, 2));
+          await writeJsonFileSafely(path.join(instancesDir, existingFile), instanceData);
         } else {
           await saveInstanceFile(username, instanceData);
         }
@@ -737,7 +1170,7 @@ app.all('/open-apis/*', async (req, res) => {
       }
     }
 
-    console.log('椋炰功浠ｇ悊璇锋眰:', {
+    verboseLog('飞书代理请求:', {
       url: targetUrl,
       method: req.method,
       path: req.path,
@@ -757,7 +1190,7 @@ app.all('/open-apis/*', async (req, res) => {
 
     const data = await response.json();
 
-    console.log('椋炰功浠ｇ悊鍝嶅簲:', {
+    verboseLog('飞书代理响应:', {
       status: response.status,
       code: data.code,
       msg: data.msg,
@@ -765,7 +1198,7 @@ app.all('/open-apis/*', async (req, res) => {
 
     res.status(response.status).json(data);
   } catch (error) {
-    console.error('椋炰功代理请求失败:', error);
+    console.error('飞书代理请求失败:', error);
     res.status(500).json({ error: '代理请求失败: ' + error.message });
   }
 });
@@ -849,14 +1282,14 @@ app.all('/K3Cloud/*', async (req, res) => {
     const sessionKey = incomingBody.sessionKey || req.headers['x-session-key'];
     if (sessionKey && kingdeeSessions.has(sessionKey)) {
       headers['Cookie'] = kingdeeSessions.get(sessionKey);
-      console.log('娴ｈ法鏁ょ€涙ê偍鐨?Cookie:', sessionKey, kingdeeSessions.get(sessionKey).substring(0, 50));
+      verboseLog('复用会话 Cookie:', sessionKey, kingdeeSessions.get(sessionKey).substring(0, 50));
     }
     // 婵″倹鐏夌拠閿嬬湴娴ｆ挷鑵戦張?Cookie閿涘牅绮?taskExecutor 娴肩姵娼甸敍澶涚礉閻╁瓨甯存担璺ㄦ暏
     if (req.headers['cookie']) {
       headers['Cookie'] = headers['Cookie']
         ? `${headers['Cookie']}; ${req.headers['cookie']}`
         : req.headers['cookie'];
-      console.log('娴ｈ法鏁ょ拠閿嬬湴娴肩姵娼甸惃?Cookie:', req.headers['cookie'].substring(0, 50));
+      verboseLog('请求头携带 Cookie:', req.headers['cookie'].substring(0, 50));
     }
 
     // 鏉烆剙褰?Host 婢?
@@ -872,7 +1305,7 @@ app.all('/K3Cloud/*', async (req, res) => {
       delete forwardBody.baseUrl;
     }
 
-    console.log('閲戣澏浠ｇ悊璇锋眰:', {
+    verboseLog('金蝶代理请求:', {
       targetUrl,
       method: req.method,
       hasSessionKey: !!sessionKey,
@@ -892,7 +1325,7 @@ app.all('/K3Cloud/*', async (req, res) => {
       // 娣囨繂鐡?Cookie 閸?session
       if (sessionKey && cookiePairs) {
         kingdeeSessions.set(sessionKey, cookiePairs);
-        console.log('娣囨繂鐡?Cookie 閸?session:', sessionKey, cookiePairs.substring(0, 80));
+        verboseLog('保存会话 Cookie:', sessionKey, cookiePairs.substring(0, 80));
       }
       // 鏉烆剙褰?Set-Cookie header
       res.setHeader('Set-Cookie', setCookieHeaders);
@@ -910,7 +1343,7 @@ app.all('/K3Cloud/*', async (req, res) => {
       || decodeBufferByEncoding(responseBuffer, 'gbk')
       || '';
 
-    console.log('闁叉垼婢忛崫宥呯安閸樼喎顫愰崘鍛啇:', responseText.substring(0, 500));
+    verboseLog('金蝶原始响应片段:', responseText.substring(0, 500));
 
     let data;
     try {
@@ -928,7 +1361,7 @@ app.all('/K3Cloud/*', async (req, res) => {
       }
 
       if (!data) {
-        console.error('JSON 鐟欙絾鐎芥径杈Е閿涘苯鎼锋惔鏂垮敶鐎?', responseText);
+        console.error('金蝶响应 JSON 解析失败:', responseText);
         return res.status(response.status).json({
           error: '金蝶服务器返回非 JSON 响应',
           rawResponse: responseText.substring(0, 500),
@@ -937,7 +1370,7 @@ app.all('/K3Cloud/*', async (req, res) => {
       }
     }
 
-    console.log('閲戣澏浠ｇ悊鍝嶅簲:', {
+    verboseLog('金蝶代理响应:', {
       status: response.status,
       LoginResultType: data?.LoginResultType,
       hasException: !!data?.Exception
@@ -945,7 +1378,7 @@ app.all('/K3Cloud/*', async (req, res) => {
 
     res.status(response.status).json(data);
   } catch (error) {
-    console.error('閲戣澏代理请求失败:', error);
+    console.error('金蝶代理请求失败:', error);
     res.status(500).json({ error: '代理请求失败: ' + error.message });
   }
 });
@@ -970,27 +1403,27 @@ ensureDataDir()
     const localIP = getLocalIP();
     const server = app.listen(PORT, '0.0.0.0', () => {
       console.log('========================================');
-      console.log(`鏈嶅姟鍣ㄨ繍琛屽湪 http://localhost:${PORT}`);
-      console.log(`鐏炩偓閸╃喓缍夌拋鍧楁６ http://${localIP}:${PORT}`);
-      console.log(`鏁版嵁瀛樺偍鐩綍: ${DATA_DIR}`);
-      console.log('閹嗗厴娴兼ê瀵插鎻掓儙閻㈩煉绱癎zip 閸樺缂夐妴浣告惙鎼存梻绱︾€涙ǜ鈧浇绻涢幒銉︾潨');
+      console.log(`服务器运行在 http://localhost:${PORT}`);
+      console.log(`局域网访问地址: http://${localIP}:${PORT}`);
+      console.log(`数据目录: ${DATA_DIR}`);
+      console.log('性能模式已启用：默认关闭 HTTP/详细日志，减少终端与 CPU 开销');
       console.log('========================================');
     });
 
     server.on('error', (err) => {
       if (err.code === 'EADDRINUSE') {
-        console.error(`闁挎瑨顕? 缁旑垰褰?${PORT} 瀹歌尪顫﹂崡鐘垫暏`);
-        console.error(`璇疯繍琛屼互涓嬪懡浠ゆ煡鎵惧苟鍏抽棴鍗犵敤杩涚▼:`);
+        console.error(`端口 ${PORT} 已被占用`);
+        console.error('请先运行以下命令查找并关闭占用进程:');
         console.error(`  netstat -ano | findstr :${PORT}`);
-        console.error(`  taskkill /F /PID <杩涚▼ID>`);
+        console.error('  taskkill /F /PID <进程ID>');
       } else {
-        console.error('閺堝秴濮熼崳銊ユ儙閸斻劌銇戠拹?', err.message);
+        console.error('服务器启动失败:', err.message);
       }
       process.exit(1);
     });
   })
   .catch((err) => {
-    console.error('閸掓繂顫愰崠鏍ㄦ殶閹诡喚娲拌ぐ鏇炪亼鐠?', err.message);
+    console.error('初始化数据目录失败:', err.message);
     process.exit(1);
   });
 // ==================== 娴间椒绗熺痪褑澶勯幋椋庮吀閻?API ====================
@@ -1021,7 +1454,7 @@ app.get('/api/admin/accounts', adminMiddleware, async (req, res) => {
       if (file.endsWith('.json') && !file.includes('_instances')) {
         const accountPath = path.join(DATA_DIR, file);
         try {
-          const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+          const data = await readJsonFileSafely(accountPath);
           if (data.account) {
             accounts.push({
               id: data.account.id,
@@ -1089,7 +1522,7 @@ app.post('/api/admin/accounts', adminMiddleware, async (req, res) => {
       tasks: [],
       lastModified: new Date().toISOString(),
     };
-    await fs.writeFile(accountPath, JSON.stringify(accountData, null, 2));
+    await writeJsonFileSafely(accountPath, accountData);
 
     res.json({ success: true, account });
   } catch (error) {
@@ -1108,14 +1541,14 @@ app.put('/api/admin/accounts/:accountId', adminMiddleware, async (req, res) => {
     for (const file of files) {
       if (file.endsWith('.json') && !file.includes('_instances')) {
         const accountPath = path.join(DATA_DIR, file);
-        const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+        const data = await readJsonFileSafely(accountPath);
         if (data.account && data.account.id === accountId) {
           data.account = {
             ...data.account,
             ...updates,
             lastModified: new Date().toISOString(),
           };
-          await fs.writeFile(accountPath, JSON.stringify(data, null, 2));
+          await writeJsonFileSafely(accountPath, data);
           return res.json({ success: true, account: data.account });
         }
       }
@@ -1137,7 +1570,7 @@ app.delete('/api/admin/accounts/:accountId', adminMiddleware, async (req, res) =
     for (const file of files) {
       if (file.endsWith('.json') && !file.includes('_instances')) {
         const accountPath = path.join(DATA_DIR, file);
-        const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+        const data = await readJsonFileSafely(accountPath);
         if (data.account && data.account.id === accountId) {
           await fs.unlink(accountPath);
 
@@ -1174,10 +1607,10 @@ app.post('/api/admin/accounts/:accountId/reset-password', adminMiddleware, async
     for (const file of files) {
       if (file.endsWith('.json') && !file.includes('_instances')) {
         const accountPath = path.join(DATA_DIR, file);
-        const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+        const data = await readJsonFileSafely(accountPath);
         if (data.account && data.account.id === accountId) {
           data.account.passwordHash = await bcrypt.hash(password, 10);
-          await fs.writeFile(accountPath, JSON.stringify(data, null, 2));
+          await writeJsonFileSafely(accountPath, data);
           return res.json({ success: true, message: '密码已重置' });
         }
       }
@@ -1200,10 +1633,10 @@ app.post('/api/admin/accounts/:accountId/toggle-lock', adminMiddleware, async (r
     for (const file of files) {
       if (file.endsWith('.json') && !file.includes('_instances')) {
         const accountPath = path.join(DATA_DIR, file);
-        const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+        const data = await readJsonFileSafely(accountPath);
         if (data.account && data.account.id === accountId) {
           data.account.status = lock ? 'locked' : 'active';
-          await fs.writeFile(accountPath, JSON.stringify(data, null, 2));
+          await writeJsonFileSafely(accountPath, data);
           return res.json({ success: true, status: data.account.status });
         }
       }
@@ -1231,7 +1664,7 @@ app.get('/api/account/profile', authMiddleware, async (req, res) => {
   try {
     const { username } = req.user;
     const accountPath = getAccountFilePath(username);
-    const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+    const data = await readJsonFileSafely(accountPath);
 
     res.json({
       account: {
@@ -1257,7 +1690,7 @@ app.put('/api/account/profile', authMiddleware, async (req, res) => {
     const { username } = req.user;
     const { email, phone, department } = req.body;
     const accountPath = getAccountFilePath(username);
-    const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+    const data = await readJsonFileSafely(accountPath);
 
     data.account = {
       ...data.account,
@@ -1266,7 +1699,7 @@ app.put('/api/account/profile', authMiddleware, async (req, res) => {
       department: department || data.account.department,
     };
 
-    await fs.writeFile(accountPath, JSON.stringify(data, null, 2));
+    await writeJsonFileSafely(accountPath, data);
     res.json({ success: true, account: data.account });
   } catch (error) {
     console.error('更新账户信息失败:', error);
@@ -1285,7 +1718,7 @@ app.post('/api/account/change-password', authMiddleware, async (req, res) => {
     }
 
     const accountPath = getAccountFilePath(username);
-    const data = JSON.parse(await fs.readFile(accountPath, 'utf8'));
+    const data = await readJsonFileSafely(accountPath);
 
     const isValid = await bcrypt.compare(currentPassword, data.account.passwordHash);
     if (!isValid) {
@@ -1293,7 +1726,7 @@ app.post('/api/account/change-password', authMiddleware, async (req, res) => {
     }
 
     data.account.passwordHash = await bcrypt.hash(newPassword, 10);
-    await fs.writeFile(accountPath, JSON.stringify(data, null, 2));
+    await writeJsonFileSafely(accountPath, data);
 
     res.json({ success: true, message: '密码已修改' });
   } catch (error) {
@@ -1390,8 +1823,8 @@ async function saveInstanceCallback(instance) {
   const filename = `${instance.id}.json`;
   const filepath = path.join(instancesDir, filename);
 
-  await fs.writeFile(filepath, JSON.stringify(instance, null, 2));
-  console.log(`[鐎圭偘绶ラ弴瀛樻煀] ${instance.id} 閻樿埖鈧?${instance.status}`);
+  await writeJsonFileSafely(filepath, instance);
+  infoLog(`[实例状态保存] ${instance.id} -> ${instance.status}`);
 }
 
 // 淇濆瓨鏃ュ織鍥炶皟鍑芥暟
@@ -1452,7 +1885,7 @@ async function findTaskByTriggerToken(triggerToken) {
     const accountFilePath = path.join(DATA_DIR, file);
 
     try {
-      const accountData = JSON.parse(await fs.readFile(accountFilePath, 'utf8'));
+      const accountData = await readJsonFileSafely(accountFilePath);
       const tasks = Array.isArray(accountData?.tasks) ? accountData.tasks : [];
       const task = tasks.find(item => item?.triggerApi?.token === triggerToken);
       if (task) {
@@ -1661,7 +2094,7 @@ app.get('/api/tasks/:instanceId/status', authMiddleware, async (req, res) => {
     for (const file of files) {
       if (file.endsWith('.json')) {
         try {
-          const instance = JSON.parse(await fs.readFile(path.join(instancesDir, file), 'utf8'));
+          const instance = await readJsonFileSafely(path.join(instancesDir, file));
           if (instance.id === instanceId) {
             return res.json({
               success: true,
@@ -1686,7 +2119,7 @@ app.get('/api/tasks/:instanceId/status', authMiddleware, async (req, res) => {
 
     res.status(404).json({ error: '任务实例不存在' });
   } catch (error) {
-    console.error('閼惧嘲褰囨禒璇插閻樿埖鈧礁銇戠拹?', error);
+    console.error('获取任务状态失败:', error);
     res.status(500).json({ error: '获取任务状态失败' });
   }
 });

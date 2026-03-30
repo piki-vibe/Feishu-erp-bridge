@@ -383,6 +383,18 @@ button,
   min-height: calc(100vh - 180px);
 }
 
+.mobile-invoice-ocr {
+  min-height: auto;
+}
+
+.invoice-ocr-page-shell {
+  margin: 0;
+  padding: 0;
+  min-height: auto;
+  border-radius: 0;
+  background: transparent;
+}
+
 /**** Responsive ****/
 @media (max-width: 768px) {
   .custom-card,
@@ -403,6 +415,13 @@ button,
   .custom-modal {
     width: 96% !important;
     max-width: 96%;
+  }
+
+  .invoice-ocr-page-shell {
+    margin: 0;
+    padding: 0;
+    background: transparent;
+    border-radius: 0;
   }
 }
 

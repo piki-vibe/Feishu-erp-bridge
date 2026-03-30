@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { authApi, dataApi, accountApi, taskApi, instanceApi, getAuthToken, clearAuthToken } from '../services/apiService';
 import type { TaskConfig, TaskInstance, TaskLog, WebAPILog, TaskVerificationStatus } from '../types';
 import { TaskStatus } from '../types';
+import { normalizeKingdeeApiMethod, normalizeKingdeeOpNumber } from '../utils/kingdeeApi';
 
 // 从 token 中解析用户信息（简单的 base64 解码）
 function parseJwt(token: string): { userId: string; username: string; exp?: number } | null {
@@ -89,6 +90,8 @@ const cloneFeishuConfig = (config: TaskConfig['feishuConfig']): TaskConfig['feis
 
 const cloneKingdeeConfig = (config: TaskConfig['kingdeeConfig']): TaskConfig['kingdeeConfig'] => ({
   ...config,
+  apiMethod: normalizeKingdeeApiMethod(config.apiMethod),
+  opNumber: normalizeKingdeeOpNumber(config.opNumber),
   loginParams: { ...config.loginParams },
 });
 

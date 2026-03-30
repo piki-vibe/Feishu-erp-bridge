@@ -4,6 +4,7 @@ import type { TaskConfig, TaskInstance } from '../types';
 // 浣跨敤鐩稿璺緞锛岄€氳繃 Vite 浠ｇ悊璁块棶鍚庣
 const API_BASE_URL = '/api';
 const REQUEST_TIMEOUT_MS = 20000;
+type JsonObject = Record<string, unknown>;
 
 // 存储 token
 let authToken: string | null = localStorage.getItem('auth_token');
@@ -51,25 +52,30 @@ async function request<T>(url: string, options: RequestInit = {}): Promise<T> {
         signal: controller.signal,
       });
 
-      let data: any;
+      let data: JsonObject = {};
       try {
-        data = await response.json();
-      } catch (_e) {
+        const parsed: unknown = await response.json();
+        if (parsed && typeof parsed === 'object') {
+          data = parsed as JsonObject;
+        }
+      } catch {
         data = {};
       }
 
       if (!response.ok) {
-        throw new Error(data.error || `请求失败，状态码: ${response.status}`);
+        const errorMessage = typeof data.error === 'string' ? data.error : `请求失败，状态码: ${response.status}`;
+        throw new Error(errorMessage);
       }
 
-      return data;
-    } catch (error: any) {
-      if (error.name === 'AbortError') {
+      return data as T;
+    } catch (error: unknown) {
+      const requestError = error instanceof Error ? error : new Error(String(error || '请求失败'));
+      if (requestError.name === 'AbortError') {
         lastError = new Error('请求超时，请稍后重试');
-      } else if (error.message === 'Failed to fetch') {
+      } else if (requestError.message === 'Failed to fetch') {
         lastError = new Error('无法连接到服务器，请确认后端服务已启动');
       } else {
-        lastError = error;
+        lastError = requestError;
       }
 
       if (attempt < maxRetries) {
@@ -211,13 +217,15 @@ export const taskExecutionApi = {
       success: boolean;
       message: string;
       preview: {
+        apiMethod: string;
+        opNumber?: string;
         formId: string;
         recordId: string;
         filterMatchedCount: number;
-        feishuFields: Record<string, any>;
-        formattedData: Record<string, any>;
-        templateReplacementData: Record<string, any>;
-        requestData: Record<string, any>;
+        feishuFields: Record<string, unknown>;
+        formattedData: Record<string, unknown>;
+        templateReplacementData: Record<string, unknown>;
+        requestData: Record<string, unknown>;
         unresolvedVariables: string[];
       };
     };
@@ -228,25 +236,26 @@ export const taskExecutionApi = {
       `/tasks/${taskId}/preview`,
     ];
 
-    let lastError: any = null;
+    let lastError: Error | null = null;
     for (const path of candidatePaths) {
       try {
         return await request<PreviewResult>(path, {
           method: 'POST',
           body: JSON.stringify({}),
         });
-      } catch (error: any) {
-        const errorMessage = String(error?.message || '');
+      } catch (error: unknown) {
+        const fallbackError = error instanceof Error ? error : new Error(String(error || '预览请求数据失败'));
+        const errorMessage = fallbackError.message;
         const isNotFound = errorMessage.includes('404') || errorMessage.includes('Cannot POST');
         const isTaskMissing = errorMessage.includes('任务不存在');
 
         if (isTaskMissing) {
-          throw error;
+          throw fallbackError;
         }
 
-        lastError = error;
+        lastError = fallbackError;
         if (!isNotFound) {
-          throw error;
+          throw fallbackError;
         }
       }
     }
@@ -294,48 +303,44 @@ export const taskExecutionApi = {
   },
 };
 
-// 鏃ュ織 API
-export const logsApi = {
-  // 保存 WebAPI 鏃ュ織
-  saveWebApiLog: async (data: {
-    instanceId: string;
-    recordId: string;
-    feishuData?: any;
-    requestData?: any;
-    responseData?: any;
-    writeBackData?: any;
-    success: boolean;
-    errorMessage?: string;
-  }) => {
-    return request<{ success: boolean; saved: boolean; message: string }>('/logs/webapi', {
+export interface OcrServiceStatus {
+  success?: boolean;
+  running: boolean;
+  baseUrl: string;
+  extractUrl: string;
+  batchUrl: string;
+  supportedFormats: string[];
+  lowPowerMode: boolean;
+  processIsolated: boolean;
+  health: null | {
+    status: string;
+    engine_ready: boolean;
+    max_file_size_mb: number;
+    batch_max_files: number;
+    ocr_cpu_threads: number;
+    keep_model_loaded: boolean;
+    process_isolated?: boolean;
+  };
+  message?: string;
+  output?: string;
+}
+
+export const ocrControlApi = {
+  getStatus: async () => {
+    return request<OcrServiceStatus>('/ocr/service/status');
+  },
+
+  startService: async () => {
+    return request<OcrServiceStatus>('/ocr/service/start', {
       method: 'POST',
-      body: JSON.stringify(data),
+      body: JSON.stringify({}),
     });
   },
 
-  // 鑾峰彇鏃ュ織
-  getLog: async (instanceId: string) => {
-    return request<{
-      success: boolean;
-      log: {
-        id: string;
-        instanceId: string;
-        timestamp: string;
-        recordId: string;
-        feishuData?: any;
-        requestData?: any;
-        responseData?: any;
-        writeBackData?: any;
-        success: boolean;
-        errorMessage?: string;
-      };
-    }>(`/logs/${instanceId}`);
-  },
-
-  // 鍒犻櫎鏃ュ織
-  deleteLog: async (instanceId: string) => {
-    return request<{ success: boolean; message: string }>(`/logs/${instanceId}`, {
-      method: 'DELETE',
+  stopService: async () => {
+    return request<OcrServiceStatus>('/ocr/service/stop', {
+      method: 'POST',
+      body: JSON.stringify({}),
     });
   },
 };

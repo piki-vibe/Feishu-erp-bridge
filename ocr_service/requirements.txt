@@ -1,0 +1,14 @@
+Flask==3.0.3
+Flask-Cors==4.0.1
+requests==2.32.3
+waitress==3.0.0
+
+# OCR core
+paddleocr==2.7.0.3
+paddlepaddle==2.6.2
+PyMuPDF==1.20.2
+Pillow==10.4.0
+opencv-python==4.6.0.66
+
+# Compatibility: paddleocr -> imgaug currently needs numpy<2.0
+numpy==1.26.4
