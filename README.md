@@ -1,567 +1,253 @@
-# 金蝶数据传输平台 (Feishu ERP Bridge)
-
-> **让飞书与金蝶的数据同步，从 3 秒/条优化到更高效的处理体验**
-
-[![License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%3E%3D18.0-brightgreen.svg)](https://nodejs.org/)
-[![Version](https://img.shields.io/github/package-json/v/piki-vibe/Feishu-erp-bridge)](https://github.com/piki-vibe/Feishu-erp-bridge)
-
-**GitHub 仓库**: https://github.com/piki-vibe/Feishu-erp-bridge
-
-## 线上发布与回滚备注（2026-03-27）
-
-- ERP 线上目录：`/opt/feishu-erp-bridge`
-- 数据目录：`/opt/feishu-erp-bridge/server/data`（发布时禁止覆盖/删除）
-- 当前可回滚备份：`/opt/feishu-erp-bridge/.deploy-backup/20260327-165257`
-- 详细运维步骤见：`keyupan_长期运维手册.md`
-
----
-
-## ⚠️ 为什么需要这个工具？
-
-如果你正在使用**飞书集成工作流**同步数据到金蝶，是否遇到过这些问题：
-
-| 痛点 | 飞书集成工作流 | 本平台 |
-|------|---------------|--------|
-| **执行速度** | 约 3 秒/条，百条数据需 5 分钟 | 约 0.3-0.6 秒/条，效率提升 5-10 倍 |
-| **日志查看** | 日志分散，难以追溯 | 完整请求/响应日志，一目了然 |
-| **功能覆盖** | 节点有限，缺少付款申请单等 | 支持金蝶全量 WebAPI |
-| **开发效率** | 图形化编排复杂，调试困难 | JSON 模板配置，灵活高效 |
-| **安全终止** | 可能在节点间停止，数据不一致 | 原子化执行，支持安全暂停 |
-| **数据回传** | 配置复杂 | 一键开启，支持多选字段 |
-
----
-
-## 🎯 产品亮点
-
-### 性能与日志
-- ⚡ **极速同步**：优化执行流程，效率提升 5-10 倍
-- 📋 **完整日志**：详细记录飞书数据、WebAPI 请求与响应，问题追溯零门槛
-
-### 功能与易用
-- 🔌 **全 API 支持**：覆盖金蝶云星空所有 WebAPI，包括付款申请单、客户、往来单位等
-- 🎨 **灵活配置**：查询变量插入 WebAPI 请求，复制粘贴即可完成数据映射
-- 📊 **双向同步**：支持数据回传，同步状态实时写入飞书
-- 🔀 **多任务并行**：支持创建多个独立任务，每个任务配置互不干扰，无限扩展业务节点
-- ✅ **智能验证**：一键验证飞书/金蝶连接、字段配置、完整流程，问题提前发现
-- 💾 **本地存储**：所有数据存储在本地，安全可控，无需担心云端数据泄露
-
-### 安全与效率
-- 🔒 **账户隔离**：多账户独立存储，数据互不可见
-- 🚦 **原子执行**：任务暂停不会在节点间停止，保证数据准确性
-- 📱 **移动办公**：Cloudflare Tunnel 支持，随时随地查看任务状态
-- 🔍 **字段类型自动识别**：支持飞书 23 种字段类型，自动映射处理类型
-- 🔄 **实时进度**：任务执行过程中每 2 秒自动更新进度，成功/失败数量实时显示
-
----
-
-## 🏗️ 架构与流程
-
-### 系统架构
-
-```
-┌─────────────┐     ┌──────────────┐     ┌─────────────┐
-│  外网用户    │────▶│ Cloudflare   │────▶│  Vite 前端   │
-│  (手机/电脑) │     │  Tunnel      │     │  (5173)     │
-└─────────────┘     └──────────────┘     └──────┬──────┘
-                                                │
-                                                │ 代理 /api
-                                                ▼
-                                         ┌─────────────┐
-                                         │  Node 后端   │
-                                         │  (3001)     │
-                                         └─────────────┘
-                                                │
-                        ┌───────────────────────┼───────────────────────┐
-                        ▼                       ▼                       ▼
-                ┌──────────────┐        ┌──────────────┐        ┌──────────────┐
-                │  飞书多维表    │        │  金蝶云星空   │        │  本地文件存储 │
-                └──────────────┘        └──────────────┘        │  (data/)     │
-                                                                └──────────────┘
-```
-
-### 数据存储架构
-
-**本地文件存储**：所有用户数据、任务配置、执行记录均存储在本地 `server/data/` 目录
-
-```
-server/data/
-├── {username}.json           # 用户账户配置（任务定义、金蝶/飞书配置）
-├── {username}_instances/     # 任务执行记录
-│   ├── 任务名_2026-03-10.json
-│   └── ...
-└── {username}_logs/          # WebAPI 调试日志
-    ├── {instanceId}.json
-    └── ...
-```
-
-**优势**：
-- 📦 **数据隐私**：所有数据存储在本地，不上传云端
-- 🔐 **账户隔离**：每个用户独立文件，数据互不干扰
-- 💾 **持久化**：关闭浏览器后数据不丢失
-- 🔍 **易管理**：JSON 格式存储，可直接查看和编辑
-
-### 任务执行流程
-
-```
-┌─────────────┐    ┌─────────────┐    ┌─────────────┐    ┌─────────────┐
-│  从飞书读取  │───▶│  数据格式化  │───▶│  发送到金蝶  │───▶│  状态回写   │
-│  多维表数据  │    │  变量替换   │    │  API 调用    │    │  到飞书     │
-└─────────────┘    └─────────────┘    └─────────────┘    └─────────────┘
-       │                                                        │
-       │                                                        ▼
-       │                                               ┌──────────────┐
-       │                                               │  本地日志存储 │
-       │                                               └──────────────┘
-       ▼
-┌──────────────┐
-│  本地配置存储 │
-└──────────────┘
-```
-
-### 多任务并行
-
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                        任务管理中心                              │
-├─────────────────┬─────────────────┬─────────────────┬───────────┤
-│   任务 1         │   任务 2         │   任务 3         │   任务 N   │
-│  付款申请单      │  采购订单        │  销售订单        │  自定义    │
-│      │          │      │          │      │          │    │      │
-│      ▼          │      ▼          │      ▼          │    ▼      │
-│  独立执行       │  独立执行       │  独立执行       │  独立执行  │
-└─────────────────┴─────────────────┴─────────────────┴───────────┘
-                              │
-                              ▼
-                    每个任务配置独立，互不干扰
-                    支持多任务同时运行，灵活扩展
-```
-
-**优势**：
-- 📦 **任务隔离**：每个任务独立配置，数据不混淆
-- 🔌 **无限扩展**：可根据业务需求创建任意数量的任务节点
-- 🚀 **并行执行**：多任务同时运行，提升整体处理效率
-
-### 技术栈
-
-| 层级 | 技术 |
-|------|------|
-| 前端 | React 19 + TypeScript + Ant Design 6 + Vite + Zustand |
-| 后端 | Node.js + Express + JWT + bcrypt |
-| 存储 | 本地 JSON 文件（按账户隔离） |
-| 公网访问 | Cloudflare Tunnel |
-
----
-
-## ⚡ 快速开始
-
-### 部署方式对比
-
-| 方式 | 适用场景 | 难度 |
-|------|---------|------|
-| 一键部署脚本 | 本地开发/测试 | ⭐ |
-| Docker 部署 | 生产环境 | ⭐⭐ |
-| 手动部署 | 自定义配置 | ⭐⭐⭐ |
-
----
-
-### 方式一：一键部署脚本（推荐新手）
-
-**Windows 用户**：
-
-1. 双击运行 `deploy.bat`
-2. 等待依赖安装完成
-3. 启动服务：`npm run start:all`
-
-**macOS / Linux 用户**：
-
-```bash
-chmod +x deploy.sh
-./deploy.sh
-npm run start:all
-```
-
----
-
-### 方式二：Docker 部署（生产环境推荐）
-
-```bash
-# 1. 克隆仓库
-git clone https://github.com/piki-vibe/Feishu-erp-bridge.git
-cd Feishu-erp-bridge
-
-# 2. 构建并启动
-docker-compose up -d --build
-
-# 3. 查看状态
-docker-compose ps
-
-# 4. 访问应用
-http://localhost:5173
-
-# 5. 停止服务
-docker-compose down
-```
-
-**数据持久化**：已配置 `./server/data` 和 `./logs` 两个数据卷，确保数据不丢失。
-
----
-
-### 方式三：手动部署
-
-```bash
-# 1. 克隆项目
-git clone https://github.com/piki-vibe/Feishu-erp-bridge.git
-cd Feishu-erp-bridge
-
-# 2. 安装依赖
-npm install
-
-# 3. 启动服务
-npm run dev          # 开发模式
-npm run start:all    # 生产模式（含 Cloudflare Tunnel）
-```
-
-启动成功后访问：`http://localhost:5173`
-
----
-
-## 🔧 配置指南（5 分钟完成）
-
-### 第一步：注册账户
-
-访问应用页面，输入用户名（至少 6 位）和密码完成注册。
-
-**注意**：账户信息存储在本地 `server/data/{username}.json`，忘记密码可删除该文件重新注册。
-
----
-
-### 第二步：配置飞书（2 分钟）
-
-1. **创建应用**：登录 [飞书开放平台](https://open.feishu.cn/) → 企业自建应用 → 创建应用
-2. **获取凭证**：在应用详情页获取 App ID 和 App Secret
-3. **配置权限**：添加「多维表读取」和「多维表写入」权限
-4. **获取表信息**：从多维表 URL 获取 App Token 和 Table ID
-
-```
-https://xxx.feishu.cn/base/bascnXXXXXXXXXXXXX?table=tblXXXXXXXXXXXXX
-                                    └─ App Token          └─ Table ID
-```
-
----
-
-### 第三步：配置金蝶（2 分钟）
-
-| 参数 | 说明 | 示例 |
-|------|------|------|
-| 服务器地址 | 金蝶云星空 API 地址 | `http://xxx.xxx.com:8000` |
-| 用户名 | 登录用户名 | `admin` |
-| 密码 | 登录密码 | `******` |
-| 账套 ID | 组织机构编号 | `100001` |
-
-**获取帮助**：
-
-- 在金蝶云星空管理员账户搜索 WebAPI 可查看文档和示例
-- 使用数据回传功能可帮助找到对应参数名
-
-**测试连接**：配置完成后点击「测试连接」按钮确认配置正确。
-
----
-
-### 第四步：创建并测试任务（1 分钟）
-
-1. 点击「新建任务」
-2. 配置飞书字段映射和金蝶数据模板
-3. 点击「验证」按钮验证完整流程
-
-**验证测试包含**：
-- ✅ 飞书登录测试：验证 AppID 和 AppSecret 是否正确
-- ✅ 飞书字段查询/筛选/回传测试：验证字段配置是否正确
-- ✅ 金蝶登录测试：验证金蝶连接是否正常
-- ✅ 完整流程测试：使用第一条记录执行完整同步
-
-**数据模板示例**：
-
-```json
-{
-  "Model": {
-    "FDATE": "{{date}}",
-    "FREMARK": "{{remark}}",
-    "FPAYORGID": { "FNumber": "{{companyCode}}" }
-  }
-}
-```
-
-使用 `{{变量名}}` 格式引用飞书字段。
-
----
-
-## 💡 最佳实践
-
-### 回传字段配置指南
-
-平台提供四种回传数据来源，满足不同的业务场景需求：
-
-| 数据来源 | 成功时 | 失败时 | 适用场景 |
-|---------|--------|--------|---------|
-| **响应状态** | `同步成功` | `同步失败` | 只需知道同步结果状态 |
-| **成功消息** | 提取响应字段或返回`同步成功` | 留空 | 回传单据编号、ID 等成功时的特定数据 |
-| **错误消息** | 留空 | 提取响应字段或返回错误描述 | 记录失败原因，便于问题排查 |
-| **完整响应** | 完整 JSON 字符串 | 完整 JSON 字符串 | 需要保留完整响应数据 |
-
-**配置步骤**：
-
-1. 在任务配置的「回传字段」面板点击「添加回写字段」
-2. 选择飞书字段名（需先在飞书多维表中创建对应字段）
-3. 选择数据来源类型
-4. （可选）填写 JSON 路径，从响应中提取特定字段
-
-**JSON 路径示例**：
-
-根据金蝶响应数据结构：
-```json
-{
-  "Result": {
-    "ResponseStatus": {
-      "IsSuccess": true,
-      "Errors": [],
-      "SuccessEntitys": [{"Id":100970,"Number":"FKD00000621"}]
-    },
-    "Id": 100970,
-    "Number": "FKD00000621"
-  }
-}
-```
-
-常用 JSON 路径：
-```
-Result.Number                              → 单据编号："FKD00000621"
-Result.Id                                  → 单据 ID：100970
-Result.ResponseStatus.IsSuccess            → 是否成功：true
-Result.ResponseStatus.SuccessEntitys[0].Number  → 成功实体编号
-Result.ResponseStatus.SuccessEntitys[0].Id      → 成功实体 ID
-Result.ResponseStatus.Errors[0].Message         → 错误信息（失败时）
-```
-
-**注意事项**：
-- `SuccessEntitys` 是数组类型，需要使用 `[0]` 指定索引
-- 没有 JSON 路径时，成功消息返回「同步成功」，错误消息返回错误描述
-- 响应状态固定返回「同步成功」或「同步失败」
-
----
-
-### 筛选 + 回传配置技巧
-
-**推荐配置**：开启「筛选字段 A 为空」+ 回传「字段 A」
-
-**效果**：
-- ✅ 避免重复同步：已同步的记录会被标记，下次执行自动跳过
-- ✅ 安全暂停：任务暂停后不会重复获取已处理的数据
-- ✅ 问题追溯：同步状态和错误信息清晰记录
-
-**操作步骤**：
-
-1. 在飞书多维表中添加「同步状态」字段（单选或文本）
-2. 配置任务时开启「筛选」，选择「同步状态 为空」
-3. 开启「回传数据」，选择「同步状态」字段
-4. 执行任务，同步成功后状态自动写入
-
----
-
-### 多任务并行建议
-
-- 不同类型的单据（如付款申请单、采购订单）建议分任务配置
-- 大数据量任务建议分批次执行，避免单次处理过多记录
-- 可在「任务管理」页面启用/禁用任务，灵活控制执行计划
-
----
-
-### 字段类型处理
-
-平台支持飞书多维表格的 23 种字段类型，自动映射处理：
-
-| 飞书字段类型 | 默认处理类型 | 说明 |
-|------------|-------------|------|
-| 文本 | text | 单行/多行文本 |
-| 数字 | number | 支持小数位数配置 |
-| 单选/多选 | select/multiselect | 自动提取选项文本 |
-| 日期 | date | 支持多种格式输出 |
-| 人员 | person | 提取姓名/手机号 |
-| 公式 | auto | 根据公式结果类型自动处理 |
-| 创建/修改时间 | datetime | 时间戳或格式化输出 |
-
----
-
-## 🌐 公网访问（可选）
-
-使用 Cloudflare Tunnel 可将本地服务安全暴露到公网，支持移动端访问。
-
-### 快速配置
-
-**Windows 用户**：
-
-```powershell
-Invoke-WebRequest -Uri "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-windows-amd64.exe" -OutFile "cloudflared-windows-amd64.exe"
-```
-
-**macOS 用户**：
-
-```bash
-brew install cloudflared
-```
-
-**Linux 用户**：
-
-```bash
-wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O cloudflared
-chmod +x cloudflared
-```
-
-### 启动 Tunnel
-
-```bash
-npm run start:all
-```
-
-启动成功后会显示公网 URL：`https://xxx.trycloudflare.com`
-
-**注意**：此为临时 Tunnel，关闭后 URL 失效。生产环境建议配置持久 Tunnel。
-
----
-
-## ❓ 常见问题
-
-### 飞书连接失败
-
-| 错误码 | 原因 | 解决方案 |
-|--------|------|---------|
-| 99991014 | 应用权限不足 | 检查是否已添加多维表读取/写入权限 |
-| 99991020 | 多维表不存在 | 检查 App Token 和 Table ID 是否正确 |
-
-### 金蝶连接失败
-
-- 检查服务器地址格式（必须包含端口号）
-- 确认用户名、密码、账套 ID 正确
-- 使用金蝶 WebAPI 调试工具测试登录
-
-### 数据同步失败
-
-| 错误 | 原因 | 解决方案 |
-|------|------|---------|
-| 往来单位不存在 | 金蝶中无该单位 | 在金蝶中先创建往来单位 |
-| 单据类型错误 | 单据类型编号不正确 | 检查数据模板配置 |
-| 字段格式不匹配 | 数据类型不符 | 检查字段参数配置 |
-
-### Cloudflare Tunnel 启动失败
-
-1. 检查 `cloudflared-windows-amd64.exe` 是否存在
-2. 检查端口 5173 是否被占用
-3. 检查网络连接是否正常
-
-### 本地数据存储位置
-
-**Windows**: `server/data/` 目录（项目根目录下）
-**macOS/Linux**: 同上
-
-可定期备份 `server/data/` 目录以防数据丢失。
-
----
-
-## 🔗 相关链接
-
-- [GitHub 仓库](https://github.com/piki-vibe/Feishu-erp-bridge)
-- [飞书开放平台](https://open.feishu.cn/)
-- [金蝶云星空开发文档](https://developer.kingdee.com/)
-- [Cloudflare 官方文档](https://developers.cloudflare.com/cloudflare-one/)
-
----
-
-## 更新日志
-
-### v2.2 (2026-03)
-- ✨ 新增实时进度轮询：任务执行过程中每 2 秒自动更新进度条，成功/失败数量实时显示
-- 🐛 修复金蝶登录问题：优化 Cookie 提取和转发机制，解决运行任务时登录失败的问题
-- 🐛 修复 URL 路径重复问题：自动处理 `/K3Cloud` 路径，避免重复导致请求失败
-- ⚡ 优化超时时间：金蝶 API 超时时间从 30 秒增加到 60 秒，适应大数据量场景
-
-### v2.1 (2026)
-- ✨ 新增回传字段 JSON 路径提取：支持从响应中提取特定字段
-- ✨ 新增「响应状态」回传选项：成功返回「同步成功」，失败返回「同步失败」
-- ✨ 优化成功/错误消息回传逻辑：支持 JSON 路径提取，无路径时返回默认消息
-- 📖 更新回传字段配置文档，添加 JSON 路径示例说明
-
-### v2.0 (2025)
-- ✨ 新增验证测试功能：支持飞书登录、字段查询、金蝶登录、完整流程测试
-- ✨ 新增字段类型自动识别：支持飞书 23 种字段类型
-- ✨ 新增移动端优化：响应式布局，支持手机/平板访问
-- 🐛 修复 PC 端验证按钮无法显示的问题
-- 🐛 优化多任务并行执行逻辑
-
-### v1.0 (2024)
-- 初始版本发布
-- 支持飞书多维表格与金蝶云星空数据同步
-- 支持多账户隔离
-- 支持数据回传功能
-
----
-
-## 2026-03 WebAPI 配置补充
-
-### 金蝶 API 方法配置规则
-
-- `API 方法` 对应 `client.` 后面的实际方法名，系统不再自动映射。
-- 例如：
-  - `Save` 对应 `client.Save(...)`
-  - `Delete` 对应 `client.Delete(...)`
-  - `View` 对应 `client.View(...)`
-  - `Draft` 对应 `client.Draft(...)`
-  - `Submit` 对应 `client.Submit(...)`
-  - `Audit` 对应 `client.Audit(...)`
-  - `UnAudit` 对应 `client.UnAudit(...)`
-  - `ExcuteOperation` 对应 `client.ExcuteOperation(...)`
-  - `CancelAssign` 对应 `client.CancelAssign(...)`
-  - `Allocate` 对应 `client.Allocate(...)`
-  - `CancelAllocate` 对应 `client.CancelAllocate(...)`
-- 下拉框仅提供常用方法预设，仍然支持手动输入其他金蝶方法名。
-
-### opNumber 透传规则
-
-- `opNumber` 改为纯透传参数。
-- 有值就传。
-- 为空就不传。
-- 不再根据 `API 方法` 自动推断或自动改写为 `ExcuteOperation`。
-
-### 请求预览与日志
-
-- “查看传入数据（不发送）” 现在展示的是发送到金蝶的完整请求参数，不再只显示 `data`。
-- 预览和日志中会展示：
-  - `requestUrl`
-  - `targetBaseUrl`
+# Feishu ERP Bridge
+
+飞书多维表到金蝶云星空的任务编排与执行工具。
+
+当前 GitHub `main` 分支是纯主应用版本，不包含 OCR 子服务代码。本文档只描述这份代码里真实存在的功能与运行方式。
+
+## 当前代码能做什么
+
+- 多账户注册、登录与本地隔离存储。
+- 配置飞书数据源：
+  - `App ID`、`App Secret`
+  - `App Token`、`Table ID`、可选 `View ID`
+  - 字段变量映射
+  - 字段类型处理
+  - 筛选条件
+  - 回写字段
+- 配置金蝶目标：
+  - `baseUrl`、`acctId`、`dbId`
+  - `appId`、`appSecret`
+  - `username`、`password`
+  - `formId`
   - `apiMethod`
-  - `opNumber`（有值时）
-  - `payload.formid`
-  - `payload.data`
+  - 可选 `opNumber`
+  - `dataTemplate` JSON 模板
+- 手动执行任务，并在执行中查看进度、成功数、失败数、停止状态。
+- 生成任务触发 API，支持外部系统通过 HTTP 触发任务。
+- 查看 WebAPI 请求预览，不发送到金蝶也能先检查最终请求体。
+- 记录并查看单次执行的 WebAPI 日志。
+- 导出和导入任务配置。
 
-### 删除接口说明
+## 任务配置的真实边界
 
-- 删除接口请使用 `Delete`。
-- 之前误写成 `Delect` 只作为兼容显示保留，不建议继续使用。
+每个任务包含两部分配置：
 
-## 许可证
+### 1. 飞书配置
 
-MIT License - 详见 [LICENSE](LICENSE) 文件
+- 连接到飞书多维表。
+- 读取字段并映射为变量。
+- 支持常见字段处理类型，如文本、数字、日期、人员、电话、多选等。
+- 支持筛选条件。
+- 支持成功/失败/响应结果回写到飞书。
 
-## Update (2026-03-27)
+### 2. 金蝶配置
 
-- Removed fixed default example values for Feishu task fields (`App ID`, `App Secret`, `App Token`).
-- Default `admin` account initialization now starts with empty task data (no preset Feishu/Kingdee parameters).
+- 通过 JSON 模板组织要发送给金蝶的数据。
+- 默认 API 方法是 `Save`。
+- 支持在任务级别指定 `apiMethod`。
+- 支持可选 `opNumber`。
+- 当前逻辑是：
+  - `opNumber` 有值就传。
+  - `opNumber` 为空就不传。
+  - 不再根据 API 方法做额外映射。
 
+当前前端内置的常用 API 方法选项包括：
 
-## Update (2026-03-27 UX refresh)
+- `Save`
+- `Delete`
+- `View`
+- `Draft`
+- `Submit`
+- `Audit`
+- `UnAudit`
+- `ExcuteOperation`
+- `CancelAssign`
+- `Allocate`
+- `CancelAllocate`
 
-- Added non-blocking JSON syntax checks for Kingdee JSON templates (hint only, save is not blocked).
-- Added an expanded JSON editor modal for long templates.
-- Made Kingdee configuration panels collapsible to keep long pages manageable.
-- Simplified task list layout by removing Feishu/Kingdee status columns and compressing description width.
-- Disabled task list pagination so drag-and-drop order works across the full list.
-- Updated task action buttons to labeled actions for clearer operation flow.
+同时也支持手动填写其它金蝶 API 方法。
+
+## 当前界面包含哪些模块
+
+- `任务管理`
+  - 新建、编辑、复制、删除、启用/停用任务
+  - 拖拽调整任务顺序
+- `执行监控`
+  - 查看执行记录
+  - 查看实例状态与最新日志
+  - 删除实例记录
+- `WebAPI 调试`
+  - 单独测试金蝶登录
+  - 手动输入 `formId`、`apiMethod`、`opNumber` 和 JSON 数据进行请求测试
+  - 查看请求预览与响应
+- `任务触发 API`
+  - 为任务生成独立触发地址
+  - 启用/停用触发地址
+  - 复制 URL 和 cURL 示例
+  - 重新生成 token
+
+## 当前内置验证能力
+
+任务验证弹窗里实际有 5 个步骤：
+
+1. 飞书登录测试
+2. 飞书字段查询 / 筛选 / 回传测试
+3. 金蝶登录测试
+4. 查看传入数据（仅预览，不发送）
+5. 第一条记录完整流程测试
+
+其中第 4 步会显示真实请求预览，第 5 步会真的执行一次同步。
+
+## 后端真实接口范围
+
+### 认证与账户
+
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `GET /api/account/profile`
+- `PUT /api/account/profile`
+- `POST /api/account/change-password`
+- `DELETE /api/account`
+
+### 任务数据
+
+- `GET /api/data`
+- `POST /api/data`
+- `GET /api/export`
+- `POST /api/import`
+- `DELETE /api/tasks/:taskId`
+- `DELETE /api/instances/:instanceId`
+
+### 执行与预览
+
+- `POST /api/tasks/:taskId/preview-request`
+- `POST /api/tasks/:taskId/request-preview`
+- `POST /api/tasks/:taskId/preview`
+- `POST /api/tasks/:taskId/execute`
+- `POST /api/tasks/:instanceId/stop`
+- `GET /api/tasks/:instanceId/status`
+
+### 日志
+
+- `POST /api/logs/webapi`
+- `GET /api/logs/:instanceId`
+- `DELETE /api/logs/:instanceId`
+
+### 外部触发
+
+- `POST /api/public/task-trigger/:triggerToken`
+- `GET /api/public/task-trigger/:triggerToken`
+
+### 代理接口
+
+- `app.all('/open-apis/*')`
+  - 转发飞书开放平台请求
+- `app.all('/K3Cloud/*')`
+  - 转发金蝶请求
+
+## 数据存储方式
+
+当前代码使用本地 JSON 文件存储运行数据，目录在：
+
+- `server/data/`
+
+这里会存放：
+
+- 账户数据
+- 任务配置
+- 执行实例
+- WebAPI 日志
+
+不同账户的数据按文件隔离保存。
+
+## 运行方式
+
+### 环境要求
+
+- Node.js 18+
+- npm 8+
+
+### 首次安装
+
+推荐直接执行：
+
+```bash
+npm run install:all
+```
+
+这会安装前端依赖和 `server/` 目录下的后端依赖。
+
+### 本地开发
+
+```bash
+npm run dev
+```
+
+默认端口：
+
+- 前端：`http://localhost:5173`
+- 后端：`http://localhost:3001`
+
+### 仅启动后端
+
+```bash
+npm run server
+```
+
+### 构建前端
+
+```bash
+npm run build
+```
+
+### Cloudflare Tunnel 相关脚本
+
+仓库里保留了两个启动脚本：
+
+- `npm run start:tunnel`
+- `npm run start:all`
+
+这两个脚本当前依赖仓库中的 `cloudflared-windows-amd64.exe`，明显偏向 Windows 本机使用场景。
+
+`npm run start:all` 的逻辑是：
+
+- 启动后端
+- 启动前端
+- 启动 Cloudflare Tunnel
+
+如果你不是在 Windows 环境运行，或没有这份可执行文件，需要自行调整。
+
+## Docker 说明
+
+仓库中仍然保留：
+
+- `Dockerfile`
+- `docker-compose.yml`
+
+但当前主代码的统一启动方式仍围绕本地 Node + Windows Cloudflare Tunnel 脚本设计。  
+如果直接用于 Docker / Linux 生产环境，建议先自行核对启动链路再使用，不建议仅凭旧文档直接上线。
+
+## 主要目录
+
+```text
+src/
+  components/           前端界面组件
+  services/             前端服务封装
+  stores/               Zustand 状态管理
+  utils/                金蝶请求预览等工具
+
+server/
+  server.js             后端入口与 API
+  taskExecutor.js       任务执行核心逻辑
+  data/                 本地运行数据
+
+scripts/
+  start-all.js          本地统一启动脚本
+  start-tunnel.js       Cloudflare Tunnel 启动脚本
+```
+
+## 当前版本特别说明
+
+- 当前 GitHub `main` 不包含 OCR 页面与 OCR 服务代码。
+- README 已按当前 `main` 的真实文件和真实接口重写。
+- 如果你的本地工作区仍保留 OCR，那是另一套本地版本，不代表 GitHub 当前内容。
