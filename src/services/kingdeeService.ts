@@ -1,7 +1,12 @@
 import axios from 'axios';
 import type { KingdeeConfig } from '../types';
+import {
+  buildKingdeeRequestPreview,
+  getKingdeeActionText,
+  normalizeKingdeeApiMethod,
+  normalizeKingdeeOpNumber,
+} from '../utils/kingdeeApi';
 
-// 金蝶API响应类型
 interface KingdeeResponse {
   LoginResultType?: number;
   Result?: any;
@@ -9,7 +14,6 @@ interface KingdeeResponse {
   [key: string]: any;
 }
 
-// 测试连接结果类型
 export interface TestConnectionResult {
   success: boolean;
   statusCode: number;
@@ -17,35 +21,46 @@ export interface TestConnectionResult {
   details?: any;
 }
 
+interface DynamicFormRequestMeta {
+  apiMethod: string;
+  endpointMethod: string;
+  opNumber: string;
+  url: string;
+  payload: Record<string, unknown>;
+}
+
 class KingdeeService {
   private username: string;
   private password: string;
-  private baseUrl: string;  // 用户输入的金蝶服务器地址
+  private baseUrl: string;
   private acctId?: string;
   private dbId?: string;
+  private defaultApiMethod: string;
+  private defaultOpNumber: string;
 
-  // Session 复用相关
-  private isLoggedIn: boolean = false;
-  private loginTime: number = 0;
-  private readonly SESSION_TIMEOUT: number = 30 * 60 * 1000; // 30分钟 session 有效期
+  private isLoggedIn = false;
+  private loginTime = 0;
+  private readonly SESSION_TIMEOUT = 30 * 60 * 1000;
 
   constructor(config: KingdeeConfig) {
-    // 保存用户输入的服务器地址
     this.baseUrl = config.loginParams.baseUrl || '';
     this.username = config.loginParams.username;
     this.password = config.loginParams.password;
     this.acctId = config.loginParams.acctId;
     this.dbId = config.loginParams.dbId;
+    this.defaultApiMethod = normalizeKingdeeApiMethod(config.apiMethod);
+    this.defaultOpNumber = normalizeKingdeeOpNumber(config.opNumber);
 
     console.log('KingdeeService initialized with:', {
       baseUrl: this.baseUrl,
       username: this.username,
       acctId: this.acctId ? '***' : 'empty',
       dbId: this.dbId ? '***' : 'empty',
+      apiMethod: this.defaultApiMethod,
+      opNumber: this.defaultOpNumber || '(empty)',
     });
   }
 
-  // 检查 session 是否有效
   private isSessionValid(): boolean {
     if (!this.isLoggedIn) return false;
     const now = Date.now();
@@ -55,35 +70,29 @@ class KingdeeService {
     return isValid;
   }
 
-  // 标记登录成功
   private markLoggedIn(): void {
     this.isLoggedIn = true;
     this.loginTime = Date.now();
     console.log('Session marked as logged in at:', new Date(this.loginTime).toLocaleString());
   }
 
-  // 清除 session
   private clearSession(): void {
     this.isLoggedIn = false;
     this.loginTime = 0;
     console.log('Session cleared');
   }
 
-  // 获取登录状态
   getLoginStatus(): boolean {
     return this.isSessionValid();
   }
 
-  // 登录金蝶系统
   async login(): Promise<boolean> {
     try {
-      // 使用后端代理路由
       const url = '/K3Cloud/Kingdee.BOS.WebApi.ServicesStub.AuthService.ValidateUser.common.kdsvc';
       const acctId = this.acctId || this.dbId || '';
 
-      // 构建请求体，包含 baseUrl 用于后端代理
       const payload = {
-        baseUrl: this.baseUrl,  // 传递给后端代理
+        baseUrl: this.baseUrl,
         acctID: acctId,
         username: this.username,
         password: this.password,
@@ -95,7 +104,7 @@ class KingdeeService {
         baseUrl: this.baseUrl,
         acctID: acctId ? '***' : 'empty',
         username: this.username,
-        password: this.password ? '***' : 'empty'
+        password: this.password ? '***' : 'empty',
       });
 
       const response = await axios.post<KingdeeResponse>(url, payload, {
@@ -107,21 +116,20 @@ class KingdeeService {
 
       console.log('Login response:', response.data);
 
-      // 检查是否是错误消息
-      if (typeof response.data === 'string' && (response.data as string).startsWith('response_error')) {
-        throw new Error(`金蝶服务器错误: ${response.data}`);
+      const responsePayload: unknown = response.data;
+      if (typeof responsePayload === 'string' && responsePayload.startsWith('response_error')) {
+        throw new Error(`金蝶服务返回异常: ${responsePayload}`);
       }
 
-      // 检查登录结果
       if (response.data.LoginResultType === 1) {
         console.log('金蝶登录成功');
-        this.markLoggedIn(); // 标记 session 有效
+        this.markLoggedIn();
         return true;
-      } else {
-        console.log('金蝶登录失败');
-        this.clearSession(); // 清除 session
-        return false;
       }
+
+      console.log('金蝶登录失败');
+      this.clearSession();
+      return false;
     } catch (error: any) {
       console.error('金蝶登录失败:', error);
       if (error.response) {
@@ -132,10 +140,8 @@ class KingdeeService {
     }
   }
 
-  // 测试连接功能
   async testConnection(): Promise<TestConnectionResult> {
     try {
-      // 尝试登录来测试连接
       const loginSuccess = await this.login();
 
       if (loginSuccess) {
@@ -148,13 +154,13 @@ class KingdeeService {
             username: this.username,
           },
         };
-      } else {
-        return {
-          success: false,
-          statusCode: 401,
-          message: '金蝶连接测试失败，登录验证未通过，请检查用户名、密码或账套ID',
-        };
       }
+
+      return {
+        success: false,
+        statusCode: 401,
+        message: '金蝶连接测试失败，登录验证未通过，请检查用户名、密码或账套 ID',
+      };
     } catch (error: any) {
       console.error('金蝶连接测试失败:', error);
 
@@ -176,10 +182,41 @@ class KingdeeService {
     }
   }
 
-  // 验证数据（不实际保存，只验证）
+  private resolveApiMethod(apiMethod?: string): string {
+    return normalizeKingdeeApiMethod(apiMethod || this.defaultApiMethod);
+  }
+
+  private resolveOpNumber(opNumber?: string): string {
+    return normalizeKingdeeOpNumber(opNumber ?? this.defaultOpNumber);
+  }
+
+  private buildDynamicFormRequest(formId: string, data: any, apiMethod?: string, opNumber?: string): DynamicFormRequestMeta {
+    const requestPreview = buildKingdeeRequestPreview({
+      baseUrl: this.baseUrl,
+      formId,
+      data,
+      apiMethod: this.resolveApiMethod(apiMethod),
+      opNumber: this.resolveOpNumber(opNumber),
+    });
+
+    return {
+      apiMethod: requestPreview.apiMethod,
+      endpointMethod: requestPreview.endpointMethod,
+      opNumber: requestPreview.opNumber || '',
+      url: requestPreview.requestUrl,
+      payload: requestPreview.payload as unknown as Record<string, unknown>,
+    };
+  }
+
+  private getActionText(requestMeta: DynamicFormRequestMeta): string {
+    if (requestMeta.apiMethod.trim().toLowerCase() === 'excuteoperation' && requestMeta.opNumber) {
+      return getKingdeeActionText(requestMeta.opNumber || requestMeta.apiMethod);
+    }
+    return getKingdeeActionText(requestMeta.apiMethod);
+  }
+
   async validateData(formId: string, data: any): Promise<any> {
     try {
-      // 检查 session 是否有效，无效则重新登录
       if (!this.isSessionValid()) {
         console.log('Session invalid or expired, re-login required');
         const loginSuccess = await this.login();
@@ -191,10 +228,8 @@ class KingdeeService {
       }
 
       const url = '/K3Cloud/Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.Save.common.kdsvc';
-
-      // 构建验证用的payload，将ValidateFlag设为true进行验证
       const payload = {
-        baseUrl: this.baseUrl,  // 传递给后端代理
+        baseUrl: this.baseUrl,
         formid: formId,
         data: {
           ...data,
@@ -224,52 +259,49 @@ class KingdeeService {
     }
   }
 
-  // 保存数据到金蝶
-  async saveData(formId: string, data: any): Promise<any> {
+  async saveData(formId: string, data: any, apiMethod?: string, opNumber?: string): Promise<any> {
+    const requestMeta = this.buildDynamicFormRequest(formId, data, apiMethod, opNumber);
+    const actionText = this.getActionText(requestMeta);
+
     try {
-      // 检查 session 是否有效，无效则重新登录
       if (!this.isSessionValid()) {
         console.log('Session invalid or expired, re-login required');
         const loginSuccess = await this.login();
         if (!loginSuccess) {
-          throw new Error('金蝶登录失败，无法保存数据');
+          throw new Error('金蝶登录失败，无法发送请求');
         }
       } else {
         console.log('Using existing session, skip login');
       }
 
-      const url = '/K3Cloud/Kingdee.BOS.WebApi.ServicesStub.DynamicFormService.Save.common.kdsvc';
-      const payload = {
-        baseUrl: this.baseUrl,  // 传递给后端代理
-        formid: formId,
-        data: data,
-      };
+      console.log('Sending request to Kingdee:', {
+        apiMethod: requestMeta.apiMethod,
+        endpointMethod: requestMeta.endpointMethod,
+        opNumber: requestMeta.opNumber || '(empty)',
+        url: requestMeta.url,
+      });
+      console.log('Request payload:', JSON.stringify(requestMeta.payload, null, 2));
 
-      console.log('Saving data to Kingdee:', url);
-      console.log('Save payload:', JSON.stringify(payload, null, 2));
-
-      const response = await axios.post<KingdeeResponse>(url, payload, {
+      const response = await axios.post<KingdeeResponse>(requestMeta.url, requestMeta.payload, {
         headers: {
           'Content-Type': 'application/json',
         },
         timeout: 30000,
       });
 
-      console.log('Save response:', response.data);
+      console.log('Request response:', response.data);
 
-      // 检查是否有异常
       if (response.data.Exception) {
-        const error = new Error(`保存失败: ${response.data.Exception}`);
+        const error = new Error(`${actionText}失败: ${response.data.Exception}`);
         (error as any).responseData = response.data;
         throw error;
       }
 
-      // 检查ResponseStatus中的错误
       if (response.data.Result?.ResponseStatus) {
         const status = response.data.Result.ResponseStatus;
         if (!status.IsSuccess && status.Errors && status.Errors.length > 0) {
-          const errorMessages = status.Errors.map((e: any) => e.Message).join('; ');
-          const error = new Error(`保存失败: ${errorMessages}`);
+          const errorMessages = status.Errors.map((item: any) => item.Message).join('; ');
+          const error = new Error(`${actionText}失败: ${errorMessages}`);
           (error as any).responseData = response.data;
           throw error;
         }
@@ -277,12 +309,11 @@ class KingdeeService {
 
       return response.data;
     } catch (error: any) {
-      console.error('保存数据到金蝶失败:', error);
+      console.error('Kingdee request failed:', error);
       if (error.response) {
         const errorData = error.response.data;
         const errorMessage = errorData?.Exception || errorData?.error || error.message;
-        // 创建带有响应数据的错误对象
-        const enhancedError = new Error(`保存失败: ${errorMessage}`);
+        const enhancedError = new Error(`${actionText}失败: ${errorMessage}`);
         (enhancedError as any).responseData = errorData;
         throw enhancedError;
       }

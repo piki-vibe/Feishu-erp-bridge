@@ -97,6 +97,8 @@ export interface KingdeeLoginParams {
 // 金蝶配置
 export interface KingdeeConfig {
   loginParams: KingdeeLoginParams;
+  apiMethod?: string;
+  opNumber?: string;
   formId: string;
   dataTemplate: string;
 }

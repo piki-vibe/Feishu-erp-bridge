@@ -3,6 +3,7 @@ import {
   Card,
   Input,
   Button,
+  AutoComplete,
   message,
   Tabs,
   Typography,
@@ -27,6 +28,14 @@ import {
 } from '@ant-design/icons';
 import KingdeeService from '../services/kingdeeService';
 import type { KingdeeConfig } from '../types';
+import {
+  buildKingdeeRequestPreview,
+  DEFAULT_KINGDEE_API_METHOD,
+  KINGDEE_API_METHOD_OPTIONS,
+  getKingdeeActionText,
+  normalizeKingdeeApiMethod,
+  normalizeKingdeeOpNumber,
+} from '../utils/kingdeeApi';
 
 const { TextArea } = Input;
 const { Text, Title } = Typography;
@@ -59,6 +68,8 @@ function WebAPIDebugger() {
   const [loginParams, setLoginParams] = useState(defaultLoginParams);
   // 表单ID
   const [formId, setFormId] = useState('');
+  const [apiMethod, setApiMethod] = useState(DEFAULT_KINGDEE_API_METHOD);
+  const [opNumber, setOpNumber] = useState('');
   // 数据模板
   const [dataTemplate, setDataTemplate] = useState(defaultDataTemplate);
   // 测试结果
@@ -94,6 +105,8 @@ function WebAPIDebugger() {
     try {
       const config: KingdeeConfig = {
         loginParams,
+        apiMethod: DEFAULT_KINGDEE_API_METHOD,
+        opNumber: '',
         formId: '',
         dataTemplate: '',
       };
@@ -166,35 +179,57 @@ function WebAPIDebugger() {
     setTestResult(null);
 
     try {
-      const result = await kingdeeService.saveData(formId, parsedData);
+      const normalizedApiMethod = normalizeKingdeeApiMethod(apiMethod);
+      const normalizedOpNumber = normalizeKingdeeOpNumber(opNumber);
+      const actionText = getKingdeeActionText(
+        normalizedApiMethod.trim().toLowerCase() === 'excuteoperation' && normalizedOpNumber
+          ? normalizedOpNumber
+          : normalizedApiMethod
+      );
+      const requestPreview = buildKingdeeRequestPreview({
+        baseUrl: loginParams.baseUrl,
+        formId,
+        data: parsedData,
+        apiMethod: normalizedApiMethod,
+        opNumber: normalizedOpNumber,
+      });
+      const result = await kingdeeService.saveData(formId, parsedData, normalizedApiMethod, normalizedOpNumber);
 
       setTestResult({
         type: 'save',
         success: true,
-        title: '数据保存成功',
-        requestData: {
-          formId,
-          data: parsedData,
-        },
+        title: `数据${actionText}成功`,
+        requestData: requestPreview,
         responseData: result,
         timestamp: new Date().toISOString(),
       });
 
-      message.success('数据保存成功');
+      message.success(`数据${actionText}成功`);
     } catch (error: any) {
+      const normalizedApiMethod = normalizeKingdeeApiMethod(apiMethod);
+      const normalizedOpNumber = normalizeKingdeeOpNumber(opNumber);
+      const actionText = getKingdeeActionText(
+        normalizedApiMethod.trim().toLowerCase() === 'excuteoperation' && normalizedOpNumber
+          ? normalizedOpNumber
+          : normalizedApiMethod
+      );
+      const requestPreview = buildKingdeeRequestPreview({
+        baseUrl: loginParams.baseUrl,
+        formId,
+        data: parsedData,
+        apiMethod: normalizedApiMethod,
+        opNumber: normalizedOpNumber,
+      });
       setTestResult({
         type: 'save',
         success: false,
-        title: '数据保存失败',
-        requestData: {
-          formId,
-          data: parsedData,
-        },
+        title: `数据${actionText}失败`,
+        requestData: requestPreview,
         errorMessage: error.message,
         responseData: error.responseData,
         timestamp: new Date().toISOString(),
       });
-      message.error(`数据保存失败: ${error.message}`);
+      message.error(`数据${actionText}失败: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -441,6 +476,41 @@ function WebAPIDebugger() {
                       style={{ width: '100%' }}
                     />
                   </div>
+                  <Row gutter={16}>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 16 }}>
+                        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                          API 鏂规硶
+                        </Text>
+                        <AutoComplete
+                          value={apiMethod}
+                          options={KINGDEE_API_METHOD_OPTIONS}
+                          onChange={(value) => setApiMethod(normalizeKingdeeApiMethod(value))}
+                          placeholder="例如：Save / Delete / ExcuteOperation"
+                          filterOption={(inputValue, option) => {
+                            const optionValue = String(option?.value || '').toLowerCase();
+                            const optionLabel = typeof option?.label === 'string' ? option.label.toLowerCase() : '';
+                            const keyword = inputValue.toLowerCase();
+                            return optionValue.includes(keyword) || optionLabel.includes(keyword);
+                          }}
+                        >
+                          <Input />
+                        </AutoComplete>
+                      </div>
+                    </Col>
+                    <Col span={12}>
+                      <div style={{ marginBottom: 16 }}>
+                        <Text strong style={{ display: 'block', marginBottom: 8 }}>
+                          opNumber (鍙€?)
+                        </Text>
+                        <Input
+                          placeholder="渚嬪锛?Forbid / UnForbid"
+                          value={opNumber}
+                          onChange={(e) => setOpNumber(normalizeKingdeeOpNumber(e.target.value))}
+                        />
+                      </div>
+                    </Col>
+                  </Row>
 
                   <div style={{ marginBottom: 16 }}>
                     <Text strong style={{ display: 'block', marginBottom: 8 }}>

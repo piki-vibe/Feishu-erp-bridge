@@ -5,6 +5,7 @@ import { TaskStatus } from '../types';
 import { useAccountStore } from '../stores/accountStore';
 import { logStorage } from './logStorage';
 import { extractFeishuFieldValue as extractFeishuValue, formatFeishuFieldValue } from '../utils/feishuValueUtils';
+import { buildKingdeeRequestPreview, normalizeKingdeeApiMethod, normalizeKingdeeOpNumber } from '../utils/kingdeeApi';
 
 // 任务执行器类
 export class TaskExecutor {
@@ -195,7 +196,7 @@ export class TaskExecutor {
     let successCount = 0;
     let errorCount = 0;
     const total = feishuItems.length;
-    const { formId, dataTemplate } = this.task.kingdeeConfig;
+    const { formId, dataTemplate, apiMethod, opNumber } = this.task.kingdeeConfig;
 
     if (!formId) {
       throw new Error('金蝶表单 ID 未配置');
@@ -221,6 +222,7 @@ export class TaskExecutor {
       const recordId = item.record_id;
       const fields = item.fields || {};
       let finalData: Record<string, any> = {};
+      let requestPreview: Record<string, any> = {};
       let writeBackResult: Record<string, any> | null = null;
 
       try {
@@ -284,7 +286,15 @@ export class TaskExecutor {
           }
         }
 
-        const result = await this.kingdeeService.saveData(formId, finalData);
+        requestPreview = buildKingdeeRequestPreview({
+          baseUrl: this.task.kingdeeConfig.loginParams.baseUrl,
+          formId,
+          data: finalData,
+          apiMethod: normalizeKingdeeApiMethod(apiMethod),
+          opNumber: normalizeKingdeeOpNumber(opNumber),
+        });
+
+        const result = await this.kingdeeService.saveData(formId, finalData, apiMethod, opNumber);
 
         successCount++;
         // 先执行回写，获取回写数据（传入金蝶响应）
@@ -297,7 +307,7 @@ export class TaskExecutor {
           timestamp: new Date().toISOString(),
           success: true,
           feishuData: fields,
-          requestData: finalData,
+          requestData: requestPreview,
           responseData: result,
           writeBackData: writeBackResult || {},
           writeBackSuccess: writeBackResult !== null,
@@ -319,7 +329,7 @@ export class TaskExecutor {
           success: false,
           errorMessage: err.message,
           feishuData: fields,
-          requestData: finalData || {},
+          requestData: Object.keys(requestPreview).length > 0 ? requestPreview : (finalData || {}),
           responseData: err.responseData || {},
           writeBackData: writeBackResult || {},
           writeBackSuccess: false,

@@ -4,6 +4,7 @@ import {
   Input,
   Button,
   Select,
+  AutoComplete,
   message,
   Collapse,
   Space,
@@ -22,6 +23,11 @@ import { useResponsive } from '../hooks/useResponsive';
 import FeishuService from '../services/feishuService';
 import { getDefaultProcessType } from '../utils/fieldTypeUtils';
 import { buildFeishuFieldPreview } from '../utils/feishuValueUtils';
+import {
+  KINGDEE_API_METHOD_OPTIONS,
+  normalizeKingdeeApiMethod,
+  normalizeKingdeeOpNumber,
+} from '../utils/kingdeeApi';
 
 const { TextArea, Password } = Input;
 
@@ -50,6 +56,8 @@ const cloneFeishuConfig = (config: TaskConfig['feishuConfig']): TaskConfig['feis
 
 const cloneKingdeeConfig = (config: TaskConfig['kingdeeConfig']): TaskConfig['kingdeeConfig'] => ({
   ...config,
+  apiMethod: normalizeKingdeeApiMethod(config.apiMethod),
+  opNumber: normalizeKingdeeOpNumber(config.opNumber),
   loginParams: { ...config.loginParams },
 });
 
@@ -1109,6 +1117,46 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
                   formId: e.target.value,
                 })
               }
+              size="large"
+            />
+          </Form.Item>
+          <Form.Item
+            label="API 方法"
+            extra="这里填 client. 后面的 API 方法名。下拉里是常用方法，也可以自己输入其他方法。"
+          >
+            <AutoComplete
+              value={kingdeeConfig.apiMethod}
+              options={KINGDEE_API_METHOD_OPTIONS}
+              onChange={(value) =>
+                setKingdeeConfig({
+                  ...kingdeeConfig,
+                  apiMethod: normalizeKingdeeApiMethod(value),
+                })
+              }
+              placeholder="例如：Save / Delete / ExcuteOperation"
+              filterOption={(inputValue, option) => {
+                const optionValue = String(option?.value || '').toLowerCase();
+                const optionLabel = typeof option?.label === 'string' ? option.label.toLowerCase() : '';
+                const keyword = inputValue.toLowerCase();
+                return optionValue.includes(keyword) || optionLabel.includes(keyword);
+              }}
+            >
+              <Input size="large" />
+            </AutoComplete>
+          </Form.Item>
+          <Form.Item
+            label="opNumber（可选）"
+            extra="有值就传 opNumber，留空就不传。不会再根据 API 方法自动映射。"
+          >
+            <Input
+              value={kingdeeConfig.opNumber || ''}
+              onChange={(e) =>
+                setKingdeeConfig({
+                  ...kingdeeConfig,
+                  opNumber: normalizeKingdeeOpNumber(e.target.value),
+                })
+              }
+              placeholder="例如：Forbid / Audit"
               size="large"
             />
           </Form.Item>
