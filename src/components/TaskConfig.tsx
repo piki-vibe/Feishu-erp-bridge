@@ -1258,7 +1258,55 @@ const TaskConfigComponent: React.FC<TaskConfigProps> = ({ task, onSave }) => {
             cancelText="取消"
             width={isMobile ? 360 : 980}
           >
+            <div style={{ marginBottom: 8 }}>
+              <Button
+                size="small"
+                onClick={() => {
+                  Modal.info({
+                    title: '选择变量插入',
+                    content: (
+                      <div>
+                        <p>点击变量插入到模板中：</p>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', marginTop: '12px' }}>
+                          {fieldParams.length === 0 ? (
+                            <span style={{ color: '#999' }}>暂无变量，请先在飞书参数中添加字段参数</span>
+                          ) : (
+                            fieldParams.map((param) => (
+                              <Button
+                                key={param.id}
+                                size="small"
+                                onClick={() => {
+                                  const textarea = document.querySelector('textarea[data-template="kingdee-expanded"]') as HTMLTextAreaElement | null;
+                                  const currentTemplate = kingdeeConfig.dataTemplate || '';
+                                  const cursorPos = textarea?.selectionStart ?? currentTemplate.length;
+                                  const textBefore = currentTemplate.substring(0, cursorPos);
+                                  const textAfter = currentTemplate.substring(cursorPos);
+                                  const variable = `{{${param.variableName}}}`;
+                                  const newTemplate = textBefore + variable + textAfter;
+                                  setKingdeeConfig({
+                                    ...kingdeeConfig,
+                                    dataTemplate: newTemplate,
+                                  });
+                                  Modal.destroyAll();
+                                  message.success(`已插入变量 {{${param.variableName}}}`);
+                                }}
+                              >
+                                {param.variableName} ({param.fieldName})
+                              </Button>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                    ),
+                    onOk() {},
+                  });
+                }}
+              >
+                导入变量
+              </Button>
+            </div>
             <TextArea
+              data-template="kingdee-expanded"
               rows={isMobile ? 18 : 26}
               value={kingdeeConfig.dataTemplate}
               onChange={(e) =>
