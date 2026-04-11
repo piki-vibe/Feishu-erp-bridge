@@ -1344,6 +1344,7 @@ function App() {
           <Button
             icon={<SettingOutlined />}
             size="small"
+            style={{ color: '#1D1D1F', borderColor: 'rgba(0,0,0,0.12)' }}
             onClick={() => handleConfigTask(record)}
           >
             配置
@@ -1351,8 +1352,7 @@ function App() {
           <Button
             icon={<ExperimentOutlined />}
             size="small"
-            style={{ color: '#1d39c4', borderColor: '#1d39c4' }}
-            ghost
+            style={{ color: '#1D1D1F', borderColor: 'rgba(0,0,0,0.12)' }}
             onClick={() => openVerificationTestModal(record.id)}
           >
             验证测试
@@ -1601,7 +1601,7 @@ function App() {
           setSelectedTask(null);
         }}
         footer={null}
-        width={900}
+        width={1080}
         className="custom-modal"
       >
         {selectedTask ? (

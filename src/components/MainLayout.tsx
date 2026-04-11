@@ -71,7 +71,7 @@ const MainLayout: React.FC<MainLayoutProps> = ({
         {/* Logo */}
         <div style={styles.logoWrap}>
           <div style={styles.logoIcon}>
-            <BrandLogo size={collapsed ? 26 : 30} />
+            <BrandLogo size={collapsed ? 52 : 60} />
           </div>
           {!collapsed && (
             <div style={styles.logoText}>
@@ -145,7 +145,7 @@ const styles: { [key: string]: React.CSSProperties } = {
     position: 'relative',
   },
   logoWrap: {
-    height: '60px',
+    height: '120px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
@@ -153,29 +153,29 @@ const styles: { [key: string]: React.CSSProperties } = {
     borderBottom: `1px solid ${BORDER}`,
   },
   logoIcon: {
-    width: '34px',
-    height: '34px',
+    width: '68px',
+    height: '68px',
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
     flexShrink: 0,
   },
   logoText: {
-    marginLeft: '9px',
+    marginLeft: '12px',
     display: 'flex',
     flexDirection: 'column',
   },
   logoTitle: {
     color: '#1D1D1F',
-    fontSize: '14px',
+    fontSize: '24px',
     fontWeight: 600,
     letterSpacing: '-0.01em',
     lineHeight: '1.3',
   },
   logoSubtitle: {
     color: '#AEAEB2',
-    fontSize: '10px',
-    marginTop: '1px',
+    fontSize: '14px',
+    marginTop: '2px',
     letterSpacing: '0.03em',
     fontWeight: 400,
   },
