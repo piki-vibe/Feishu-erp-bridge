@@ -51,6 +51,8 @@ import {
   SyncOutlined,
   HolderOutlined,
   ExclamationCircleOutlined,
+  RightOutlined,
+  CloseOutlined,
 } from '@ant-design/icons';
 import { TaskStatus } from './types';
 import type { TaskConfig, TaskInstance, WebAPILog } from './types';
@@ -1982,28 +1984,62 @@ return (
       <>
           {/* 操作指引 */}
           {showGuide && currentAccount && (
-            <Card className="guide-card animate-fade-in-up" style={{ marginBottom: 16 }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-                <Text strong style={{ fontSize: 14, color: '#0F172A' }}>
-                  <CloudSyncOutlined style={{ marginRight: 8, color: '#2563EB' }} />
-                  操作指引
-                </Text>
-                <Button type="text" size="small" onClick={() => setShowGuide(false)}>
-                  隐藏
-                </Button>
+            <div
+              className="animate-fade-in-up guide-banner"
+              style={{
+                marginBottom: 16,
+                padding: '10px 18px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+                <span style={{ fontSize: 13, fontWeight: 600, color: '#1D1D1F', letterSpacing: '-0.01em' }}>
+                  快速上手
+                </span>
+                <div style={{ width: 1, height: 14, background: 'rgba(0,0,0,0.1)', flexShrink: 0 }} />
+                <div style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                  {([
+                    { num: '01', label: '新建任务' },
+                    { num: '02', label: '配置连接' },
+                    { num: '03', label: '测试验证' },
+                    { num: '04', label: '启用执行' },
+                  ] as { num: string; label: string }[]).map((step, i, arr) => (
+                    <div key={step.num} style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span style={{
+                          width: 20, height: 20,
+                          borderRadius: 5,
+                          background: 'rgba(0,0,0,0.05)',
+                          color: '#1D1D1F',
+                          fontSize: 10,
+                          fontWeight: 600,
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          letterSpacing: '-0.02em',
+                          flexShrink: 0,
+                        }}>{step.num}</span>
+                        <span style={{ fontSize: 13, color: '#6E6E73', fontWeight: 400, whiteSpace: 'nowrap' }}>
+                          {step.label}
+                        </span>
+                      </div>
+                      {i < arr.length - 1 && (
+                        <RightOutlined style={{ fontSize: 8, color: 'rgba(0,0,0,0.18)', margin: '0 10px' }} />
+                      )}
+                    </div>
+                  ))}
+                </div>
               </div>
-              <Steps
-                direction="horizontal"
+              <Button
+                type="text"
                 size="small"
-                current={-1}
-                items={[
-                  { title: '创建任务', description: '点击新建任务，输入任务名称', icon: <PlusOutlined /> },
-                  { title: '配置连接', description: '配置飞书和金蝶的连接信息', icon: <SettingOutlined /> },
-                  { title: '测试连接', description: '使用下方按钮测试连接', icon: <CloudSyncOutlined /> },
-                  { title: '启用执行', description: '启用任务并点击执行按钮', icon: <ThunderboltOutlined /> },
-                ]}
+                icon={<CloseOutlined />}
+                onClick={() => setShowGuide(false)}
+                style={{ color: 'rgba(0,0,0,0.25)', padding: '0 4px', marginLeft: 12, flexShrink: 0 }}
               />
-            </Card>
+            </div>
           )}
 
           <Tabs

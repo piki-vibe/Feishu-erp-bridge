@@ -1,42 +1,46 @@
-/* 云桥 CloudLink — Enterprise SaaS · Pure White Business */
+/* 云桥 CloudLink — Apple-inspired · Near-Zero Color */
 
 :root {
-  /* Brand */
-  --primary:        #2563EB;
-  --primary-hover:  #1D4ED8;
-  --primary-light:  #EFF6FF;
-  --primary-border: #BFDBFE;
+  /* ── Primary CTA: blue used ONLY for the single critical action ── */
+  --primary:        #007AFF;
+  --primary-hover:  #0071E3;
+  --primary-light:  rgba(0, 122, 255, 0.06);
+  --primary-border: rgba(0, 122, 255, 0.14);
 
-  /* Neutral */
-  --bg-base:     #F8FAFC;
-  --bg-surface:  #FFFFFF;
-  --bg-muted:    #F1F5F9;
+  /* ── Canvas — near-zero color ── */
+  --bg-base:    #F5F5F7;   /* Apple macOS canvas */
+  --bg-surface: #FFFFFF;
+  --bg-muted:   rgba(0, 0, 0, 0.032);  /* hover — barely visible */
 
-  --text-primary:   #0F172A;
-  --text-secondary: #64748B;
-  --text-muted:     #94A3B8;
+  /* ── Typography — strong contrast, no mid-tones ── */
+  --text-primary:   #1D1D1F;           /* Apple headline */
+  --text-secondary: #6E6E73;           /* Apple secondary label */
+  --text-muted:     #AEAEB2;           /* Apple tertiary label */
 
-  --border:       #E2E8F0;
-  --border-focus: #93C5FD;
+  /* ── Structure — near-invisible ── */
+  --border:       rgba(0, 0, 0, 0.08);
+  --border-focus: rgba(0, 122, 255, 0.48);
 
-  /* Semantic */
-  --success: #16A34A;
-  --warning: #D97706;
-  --error:   #DC2626;
+  /* ── Semantic — muted, Apple-system tones ── */
+  --success: #30D158;
+  --warning: #FF9F0A;
+  --error:   #FF3B30;
 
-  /* Radius */
-  --radius-sm: 4px;
-  --radius-md: 6px;
-  --radius-lg: 8px;
+  /* ── Radius — slightly generous, Apple-like ── */
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
 
-  /* Shadow — minimal */
-  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.05);
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.08);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.08);
+  /* ── Shadow — almost imperceptible ── */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 4px rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 2px 12px rgba(0, 0, 0, 0.06);
 
-  /* Font */
-  --font-base: 'Inter', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', system-ui, sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  /* ── Font — Apple system stack ── */
+  --font-base: -apple-system, BlinkMacSystemFont, 'SF Pro Text',
+               'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei',
+               system-ui, sans-serif;
+  --font-mono: 'SF Mono', 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
 }
 
 /* ─── Reset & Base ─────────────────────────────────── */
@@ -46,25 +50,19 @@ html, body {
   color: var(--text-primary);
   font-family: var(--font-base);
   font-size: 14px;
-  line-height: 1.57;
+  line-height: 1.6;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
 
-/* Remove dotted pattern */
 body::before { display: none; }
-
 #root { position: relative; }
 
 h1, h2, h3 {
   font-family: var(--font-base);
   font-weight: 600;
   color: var(--text-primary);
-}
-
-.ant-typography {
-  color: var(--text-primary);
-  font-family: var(--font-base);
+  letter-spacing: -0.01em;
 }
 
 .ant-typography,
@@ -77,66 +75,69 @@ h1, h2, h3 {
   font-family: var(--font-base);
 }
 
-/* ─── Scrollbar ────────────────────────────────────── */
+/* ─── Scrollbar — invisible until hover ────────────── */
 
-*::-webkit-scrollbar       { width: 6px; height: 6px; }
+*::-webkit-scrollbar       { width: 5px; height: 5px; }
 *::-webkit-scrollbar-track { background: transparent; }
 *::-webkit-scrollbar-thumb {
-  background: #CBD5E1;
-  border-radius: 3px;
+  background: rgba(0, 0, 0, 0.12);
+  border-radius: 99px;
 }
-*::-webkit-scrollbar-thumb:hover { background: #94A3B8; }
+*::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.22); }
 
 /* ─── Buttons ──────────────────────────────────────── */
 
 .ant-btn {
   border-radius: var(--radius-md) !important;
+  font-family: var(--font-base);
   font-weight: 500;
   font-size: 14px;
   height: 34px;
   padding: 0 14px;
   box-shadow: none !important;
-  transition: background 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  transition: background 0.12s, border-color 0.12s, color 0.12s, opacity 0.12s;
 }
 
+/* Primary: blue, only for the single most important action */
 .ant-btn-primary {
   background: var(--primary) !important;
   border-color: var(--primary) !important;
   color: #fff !important;
+  letter-spacing: 0.01em;
 }
-.ant-btn-primary:hover,
-.ant-btn-primary:focus {
-  background: var(--primary-hover) !important;
-  border-color: var(--primary-hover) !important;
-}
+.ant-btn-primary:hover { background: var(--primary-hover) !important; border-color: var(--primary-hover) !important; }
 
+/* Default: white + near-invisible border */
 .ant-btn-default {
   background: #fff !important;
-  border-color: var(--border) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
   color: var(--text-primary) !important;
 }
-.ant-btn-default:hover,
-.ant-btn-default:focus {
-  border-color: #93C5FD !important;
-  color: var(--primary) !important;
-  background: var(--primary-light) !important;
+.ant-btn-default:hover {
+  border-color: rgba(0, 0, 0, 0.22) !important;
+  color: var(--text-primary) !important;
+  background: rgba(0, 0, 0, 0.02) !important;
 }
 
+/* Text: fully transparent */
 .ant-btn-text {
   border-color: transparent !important;
   background: transparent !important;
+  color: var(--text-secondary) !important;
 }
 .ant-btn-text:hover {
   background: var(--bg-muted) !important;
+  color: var(--text-primary) !important;
 }
 
+/* Dangerous */
 .ant-btn-dangerous {
   color: var(--error) !important;
-  border-color: #FECACA !important;
+  border-color: rgba(255, 59, 48, 0.2) !important;
   background: #fff !important;
 }
 .ant-btn-dangerous:hover {
-  background: #FEF2F2 !important;
+  background: rgba(255, 59, 48, 0.04) !important;
   border-color: var(--error) !important;
 }
 
@@ -147,30 +148,33 @@ h1, h2, h3 {
 .ant-select-selector,
 .ant-picker {
   border-radius: var(--radius-md) !important;
-  border-color: var(--border) !important;
+  border-color: rgba(0, 0, 0, 0.12) !important;
   font-size: 14px;
   box-shadow: none !important;
+  background: #fff !important;
 }
 .ant-input:hover,
 .ant-select-selector:hover,
 .ant-picker:hover {
-  border-color: #93C5FD !important;
+  border-color: rgba(0, 0, 0, 0.22) !important;
 }
 .ant-input:focus,
 .ant-input-affix-wrapper-focused,
 .ant-select-focused .ant-select-selector,
 .ant-picker-focused {
   border-color: var(--primary) !important;
-  box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.12) !important;
+  box-shadow: 0 0 0 3px rgba(0, 122, 255, 0.1) !important;
 }
 
 /* ─── Switch ───────────────────────────────────────── */
 
+.ant-switch { background: rgba(0,0,0,0.15); }
 .ant-switch.ant-switch-checked { background: var(--primary); }
 
 /* ─── Progress ─────────────────────────────────────── */
 
 .ant-progress-bg { background: var(--primary) !important; }
+.ant-progress-inner { background: rgba(0,0,0,0.06) !important; }
 
 /* ─── Tags ─────────────────────────────────────────── */
 
@@ -178,6 +182,15 @@ h1, h2, h3 {
   border-radius: var(--radius-sm);
   font-weight: 500;
   font-size: 12px;
+  border: none;
+  background: rgba(0, 0, 0, 0.055);
+  color: var(--text-secondary);
+}
+
+/* ─── Tabs (hidden tabBar) — remove extra top padding ─ */
+
+.custom-tabs > .ant-tabs-content-holder > .ant-tabs-content > .ant-tabs-tabpane {
+  padding-top: 0 !important;
 }
 
 /* ─── Sider & Menu ─────────────────────────────────── */
@@ -191,12 +204,13 @@ h1, h2, h3 {
 
 .fresh-sider .fresh-side-menu .ant-menu-item {
   border-radius: var(--radius-md);
-  margin: 2px 0;
-  height: 40px;
-  line-height: 40px;
+  margin: 3px 0;
+  height: 44px;
+  line-height: 44px;
   color: var(--text-secondary);
-  font-weight: 500;
+  font-weight: 400;
   font-size: 14px;
+  transition: background 0.1s, color 0.1s;
 }
 
 .fresh-sider .fresh-side-menu .ant-menu-item:hover {
@@ -204,11 +218,25 @@ h1, h2, h3 {
   color: var(--text-primary) !important;
 }
 
+/* Active: left-border accent + barely-tinted bg + bold text */
 .fresh-sider .fresh-side-menu .ant-menu-item-selected {
-  background: var(--primary-light) !important;
+  background: rgba(0, 122, 255, 0.07) !important;
   color: var(--primary) !important;
+  font-weight: 600;
   border: none !important;
   box-shadow: none !important;
+  position: relative;
+}
+.fresh-sider .fresh-side-menu .ant-menu-item-selected::before {
+  content: '';
+  position: absolute;
+  left: -12px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 18px;
+  border-radius: 0 3px 3px 0;
+  background: var(--primary);
 }
 
 .fresh-sider .fresh-side-menu .ant-menu-item-selected .anticon {
@@ -217,6 +245,10 @@ h1, h2, h3 {
 
 .fresh-sider .fresh-side-menu .ant-menu-item .anticon {
   font-size: 16px;
+  opacity: 0.7;
+}
+.fresh-sider .fresh-side-menu .ant-menu-item-selected .anticon {
+  opacity: 1;
 }
 
 /* ─── Table ────────────────────────────────────────── */
@@ -225,30 +257,31 @@ h1, h2, h3 {
   border-radius: var(--radius-lg);
   overflow: hidden;
   border: 1px solid var(--border);
+  background: #fff;
 }
 
 .custom-table .ant-table-thead > tr > th {
-  background: var(--bg-muted);
-  color: var(--text-secondary);
-  font-weight: 600;
-  font-size: 12px;
+  background: #FAFAFA;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.06em;
   border-bottom: 1px solid var(--border);
-  padding: 10px 16px;
+  padding: 9px 16px;
 }
 
 .custom-table .ant-table-tbody > tr > td {
-  border-bottom: 1px solid var(--border);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.05);
   color: var(--text-primary);
   font-size: 14px;
   line-height: 1.5;
-  padding: 12px 16px;
+  padding: 13px 16px;
 }
 
 .custom-table .ant-table-tbody > tr:last-child > td { border-bottom: none; }
 .custom-table .ant-table-tbody > tr:nth-child(even) > td { background: transparent; }
-.custom-table .ant-table-tbody > tr:hover > td { background: var(--bg-muted) !important; }
+.custom-table .ant-table-tbody > tr:hover > td { background: rgba(0,0,0,0.02) !important; }
 
 .custom-table .task-row-drag-over > td {
   background: var(--primary-light) !important;
@@ -261,14 +294,14 @@ h1, h2, h3 {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
+  width: 26px;
+  height: 26px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--bg-surface);
+  background: transparent;
   color: var(--text-muted);
   cursor: grab;
-  transition: background 0.15s, color 0.15s;
+  transition: background 0.12s, color 0.12s;
 }
 .task-drag-handle:hover {
   background: var(--bg-muted);
@@ -276,7 +309,7 @@ h1, h2, h3 {
 }
 .task-drag-handle:active { cursor: grabbing; }
 
-/* ─── Toolbar & layout helpers ─────────────────────── */
+/* ─── Toolbar ──────────────────────────────────────── */
 
 .task-toolbar {
   margin-bottom: 12px;
@@ -296,7 +329,7 @@ h1, h2, h3 {
 .task-result-hint {
   display: block;
   margin-bottom: 12px;
-  font-size: 13px;
+  font-size: 12px;
   color: var(--text-muted);
 }
 
@@ -307,13 +340,13 @@ h1, h2, h3 {
   align-items: center;
   gap: 8px;
   cursor: pointer;
-  padding: 6px 12px;
+  padding: 5px 10px;
   border-radius: var(--radius-md);
-  transition: background 0.15s;
+  transition: background 0.12s;
 }
 .fresh-user-panel:hover { background: var(--bg-muted); }
 
-/* ─── Cards (modals, guide) ────────────────────────── */
+/* ─── Modals ───────────────────────────────────────── */
 
 .ant-modal-content {
   border-radius: var(--radius-lg) !important;
@@ -321,51 +354,52 @@ h1, h2, h3 {
   box-shadow: var(--shadow-md);
 }
 
-.guide-card {
-  background: var(--primary-light);
-  border: 1px solid var(--primary-border);
-  border-radius: var(--radius-lg);
-}
+/* ─── Cards ────────────────────────────────────────── */
 
-/* custom-card — used in modals / other panels */
 .custom-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
   background: var(--bg-surface);
 }
 .custom-card .ant-card-head {
   border-bottom: 1px solid var(--border);
-  background: var(--bg-muted);
+  background: transparent;
   border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  min-height: 44px;
 }
-
-/* ─── Mobile stat cards ────────────────────────────── */
 
 .stat-card {
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--bg-surface);
-  box-shadow: var(--shadow-xs);
+  box-shadow: none;
+}
+
+/* ─── Guide banner ─────────────────────────────────── */
+
+.guide-banner {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }
 
 /* ─── Animations ───────────────────────────────────── */
 
 @keyframes softRise {
-  from { opacity: 0; transform: translateY(8px); }
+  from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
 }
 
-.animate-fade-in-up { animation: softRise 0.2s ease-out; }
+.animate-fade-in-up { animation: softRise 0.18s ease-out; }
 
 @media (prefers-reduced-motion: reduce) {
   .animate-fade-in-up { animation: none; }
 }
 
-/* ─── Mobile shells ────────────────────────────────── */
+/* ─── Mobile ───────────────────────────────────────── */
 
 .mobile-view { padding: 0; padding-bottom: 58px; }
-
 .mobile-content-wrapper { padding: 12px; padding-bottom: 18px; }
 
 .mobile-stat-cards {
@@ -378,25 +412,21 @@ h1, h2, h3 {
   .mobile-stat-cards { grid-template-columns: repeat(3, 1fr); }
 }
 
-.mobile-task-list    { margin-bottom: 16px; }
-.mobile-actions      { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
+.mobile-task-list { margin-bottom: 16px; }
+.mobile-actions   { display: flex; flex-direction: column; gap: 8px; margin-bottom: 18px; }
 
 .mobile-monitoring,
 .mobile-debugger,
-.mobile-profile      { min-height: calc(100vh - 180px); }
+.mobile-profile { min-height: calc(100vh - 180px); }
 
 /* ─── Responsive ───────────────────────────────────── */
 
 @media (max-width: 768px) {
   .task-toolbar { align-items: stretch; }
   .custom-table .ant-table-thead > tr > th,
-  .custom-table .ant-table-tbody > tr > td {
-    padding: 8px 10px;
-    font-size: 13px;
-  }
+  .custom-table .ant-table-tbody > tr > td { padding: 8px 10px; font-size: 13px; }
   .custom-modal { width: 96% !important; max-width: 96%; }
 }
-
 @media (max-width: 480px) {
   .custom-modal { width: 98% !important; max-width: 98%; }
 }
